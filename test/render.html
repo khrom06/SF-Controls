@@ -69,6 +69,11 @@
   el = mount("sf-todo-card", { entity: "todo.nope" }, hass([])); check(text(el).includes("Entity not found"), "missing entity");
   let t2 = false; try { mount("sf-todo-card", { entity: "sensor.x" }); } catch (e) { t2 = true; } check(t2, "todo rejects non-todo entity");
   el = mount("sf-todo-card", { entity: "todo.s" }, Object.assign(hass([state("todo.s", 0)], { wsResult: () => ({ response: { "todo.s": { items: [] } } }) }), { language: "fr" })); await sleep(60); check(text(el).includes("Rien à faire"), "French empty state");
+  T.i18n(X.i18n.fan, "fan"); T.i18n(X.i18n.bar, "bar"); T.i18n(X.i18n.todo, "todo");
+  for (const [lang, word] of [["ar", "إيقاف"], ["zh", "关"], ["ru", "ВЫКЛ"], ["nl", "UIT"], ["it", "SPENTO"], ["pt", "DESLIGADO"], ["pl", "WYŁ."]]) {
+    const e = mount("sf-fan-card", { entity: "fan.f", language: lang }, hass([fan({}, "off")])); check(text(e).includes(word), "fan language option " + lang + ": " + text(e));
+    eq(e.getAttribute("dir"), lang === "ar" ? "rtl" : "ltr", "text direction for " + lang);
+  }
   done();
 })().catch((e) => { document.getElementById("result").textContent = JSON.stringify({ ok: false, checks: 0, failures: ["exception: " + e.message + " " + (e.stack || "").split("\n")[1]] }); });
 </script>

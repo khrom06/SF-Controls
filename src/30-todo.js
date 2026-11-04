@@ -4,6 +4,13 @@ const TODO_I18N = {
   fr: { title: "À faire", add: "Ajouter un élément…", addBtn: "Ajouter", done: "Terminés", clear: "Effacer les terminés", empty: "Rien à faire", err: "Liste illisible", missing: "Entité introuvable : {id}" },
   de: { title: "Aufgaben", add: "Eintrag hinzufügen…", addBtn: "Hinzufügen", done: "Erledigt", clear: "Erledigte löschen", empty: "Nichts zu tun", err: "Liste nicht lesbar", missing: "Entität nicht gefunden: {id}" },
   es: { title: "Tareas", add: "Añadir elemento…", addBtn: "Añadir", done: "Completadas", clear: "Borrar completadas", empty: "Nada que hacer", err: "No se puede leer la lista", missing: "Entidad no encontrada: {id}" },
+ nl: {"title": "Taken", "add": "Item toevoegen…", "addBtn": "Toevoegen", "done": "Voltooid", "clear": "Voltooide wissen", "empty": "Niets te doen", "err": "Lijst niet leesbaar", "missing": "Entiteit niet gevonden: {id}"},
+ it: {"title": "Da fare", "add": "Aggiungi elemento…", "addBtn": "Aggiungi", "done": "Completati", "clear": "Cancella completati", "empty": "Niente da fare", "err": "Elenco illeggibile", "missing": "Entità non trovata: {id}"},
+ pt: {"title": "Tarefas", "add": "Adicionar item…", "addBtn": "Adicionar", "done": "Concluídas", "clear": "Limpar concluídas", "empty": "Nada a fazer", "err": "Lista ilegível", "missing": "Entidade não encontrada: {id}"},
+ pl: {"title": "Do zrobienia", "add": "Dodaj pozycję…", "addBtn": "Dodaj", "done": "Ukończone", "clear": "Wyczyść ukończone", "empty": "Nic do zrobienia", "err": "Nie można odczytać listy", "missing": "Nie znaleziono encji: {id}"},
+ ru: {"title": "Задачи", "add": "Добавить пункт…", "addBtn": "Добавить", "done": "Выполнено", "clear": "Очистить выполненные", "empty": "Нечего делать", "err": "Не удалось прочитать список", "missing": "Сущность не найдена: {id}"},
+ zh: {"title": "待办", "add": "添加项目…", "addBtn": "添加", "done": "已完成", "clear": "清除已完成", "empty": "无待办事项", "err": "无法读取列表", "missing": "未找到实体：{id}"},
+ ar: {"title": "المهام", "add": "إضافة عنصر…", "addBtn": "إضافة", "done": "مكتملة", "clear": "مسح المكتملة", "empty": "لا شيء للقيام به", "err": "تعذّرت قراءة القائمة", "missing": "الكيان غير موجود: {id}"},
 };
 const TODO_MIN_INTERVAL = 3000;
 
@@ -20,7 +27,7 @@ class SFTodoCard extends SFCard {
     this._items = []; this._error = false; this._inflight = false; this._dirty = true; this._last = 0; this._showDone = false; return { ...c };
   }
   signature() { const s = this._hass && this._hass.states[this._cfg.entity], v = s ? s.state + ":" + (s.last_updated || "") : "-"; if (v !== this._tdSig) { this._tdSig = v; this._dirty = true; } return v + this._theme(); }
-  title() { return this._cfg.title || (this._st() && this._st().attributes.friendly_name) || sfT(TODO_I18N, sfLang(this._hass), "title"); }
+  title() { return this._cfg.title || (this._st() && this._st().attributes.friendly_name) || sfT(TODO_I18N, this._lang(), "title"); }
   _st() { return this._hass && this._hass.states[this._cfg.entity]; }
   tag() { const s = this._st(); return s && /^\d+$/.test(s.state) ? { cls: +s.state ? "warn" : "ok", text: s.state } : null; }
   get tick() { return 30000; }
@@ -43,7 +50,7 @@ class SFTodoCard extends SFCard {
     .sec { margin:12px 0 4px; display:flex; justify-content:space-between; align-items:center; font-family:Orbitron, ui-sans-serif, sans-serif; font-size:10px; letter-spacing:.2em; text-transform:uppercase; color:var(--sf-dim); }
     .sec button { font-size:10px; padding:2px 8px; }`; }
   body() {
-    const L = sfLang(this._hass), t = (k, v) => sfT(TODO_I18N, L, k, v);
+    const L = this._lang(), t = (k, v) => sfT(TODO_I18N, L, k, v);
     if (!this._st()) return `<div class="err">${sfEsc(t("missing", { id: this._cfg.entity }))}</div>`;
     const todo = this._items.filter((i) => !i.done), done = this._items.filter((i) => i.done);
     const item = (i) => `<div class="it ${i.done ? "d" : ""}"><button class="bx" data-act="tgl" data-u="${sfEsc(i.uid)}" data-d="${i.done ? 1 : 0}" role="checkbox" aria-checked="${i.done}" aria-label="${sfEsc(i.summary)}">${i.done ? "✓" : ""}</button><span class="tx">${sfEsc(i.summary)}</span>${i.due ? `<span class="due">${sfEsc(String(i.due).slice(0, 10))}</span>` : ""}</div>`;
@@ -76,4 +83,4 @@ class SFTodoCard extends SFCard {
   }
 }
 sfRegister("sf-todo-card", SFTodoCard, "SF To-do", "To-do / shopping list card: add, check off and clear items.");
-window.__sfControls = { fanPeriod, barColor, barFraction, todoItems };   // exposed for the test page only
+window.__sfControls = { i18n: { fan: FAN_I18N, bar: BAR_I18N, todo: TODO_I18N }, fanPeriod, barColor, barFraction, todoItems };   // exposed for the test page only

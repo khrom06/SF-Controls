@@ -13,6 +13,7 @@ const SF_BASE_CSS = `
   :host { display:block; ${SF_VARS_DARK} }
   :host([theme="light"]) { ${SF_VARS_LIGHT} }
   * { box-sizing:border-box; }
+  :host([dir="rtl"]) .hud { direction:rtl; } :host([dir="rtl"]) svg, :host([dir="rtl"]) .track, :host([dir="rtl"]) input[type=range] { direction:ltr; }
   .hud { position:relative; overflow:hidden; border-radius:14px; padding:16px 18px 18px; color:var(--sf-text);
     background: radial-gradient(ellipse at 50% -20%, var(--sf-bg0) 0%, var(--sf-bg1) 60%, var(--sf-bg2) 100%);
     border:1px solid rgb(var(--sf-cyan-rgb) / .22); font-family:'B612 Mono', ui-monospace, monospace; font-size:13px;
@@ -44,7 +45,8 @@ const sfLang = (hass) => String((hass && (hass.locale?.language || hass.language
 // Translation lookup with English fallback: sfT(dict, lang, key, {n: 3}) replaces {n}.
 const sfT = (dict, lang, key, vars) => {
   let s = (dict[lang] && dict[lang][key]) ?? (dict.en && dict.en[key]) ?? key;
-  if (vars) for (const k of Object.keys(vars)) s = s.split("{" + k + "}").join(String(vars[k]));
+  // In right-to-left text, numbers with Latin units are isolated so "5 min" is not scrambled by the bidi algorithm.
+  if (vars) for (const k of Object.keys(vars)) s = s.split("{" + k + "}").join(lang === "ar" ? "\u2066" + vars[k] + "\u2069" : String(vars[k]));
   return s;
 };
 // Human duration from seconds: "45 s", "12 min", "3 h 05", "2 d 4 h".
@@ -72,13 +74,15 @@ class SFCard extends HTMLElement {
   get hass() { return this._hass; }
   connectedCallback() { if (this.tick && !this._timer) this._timer = setInterval(() => this._draw(), this.tick); }
   disconnectedCallback() { if (this._timer) { clearInterval(this._timer); this._timer = null; } }
+  // Language: the card's own `language` option wins, otherwise the Home Assistant UI language (first two letters, e.g. zh-Hans -> zh).
+  _lang() { const o = this._cfg && this._cfg.language; return typeof o === "string" && o ? o.slice(0, 2).toLowerCase() : sfLang(this._hass); }
   getCardSize() { return 3; }
   _theme() { const t = this._cfg && this._cfg.theme; if (t === "light" || t === "dark") return t; return this._hass && this._hass.themes && this._hass.themes.darkMode === false ? "light" : "dark"; }
   _draw() {
     if (!this._cfg) return;
     const root = this.shadowRoot, ae = root.activeElement;
     const keep = ae && ae.id ? { id: ae.id, value: ae.value, s: ae.selectionStart, e: ae.selectionEnd } : null;
-    this.setAttribute("theme", this._theme());
+    this.setAttribute("theme", this._theme()); this.setAttribute("dir", this._lang() === "ar" ? "rtl" : "ltr");
     let inner;
     try {
       const tag = this.tag ? this.tag() : null, ttl = this.title() || "";
@@ -101,6 +105,13 @@ const FAN_I18N = {
   fr: { off: "ARRÊT", on: "MARCHE", speed: "Vitesse", presets: "Mode", osc: "Oscillation", dir: "Inverser", unavailable: "Indisponible", missing: "Entité introuvable : {id}" },
   de: { off: "AUS", on: "AN", speed: "Stufe", presets: "Modus", osc: "Schwenken", dir: "Umkehren", unavailable: "Nicht verfügbar", missing: "Entität nicht gefunden: {id}" },
   es: { off: "APAGADO", on: "ENCENDIDO", speed: "Velocidad", presets: "Modo", osc: "Oscilar", dir: "Invertir", unavailable: "No disponible", missing: "Entidad no encontrada: {id}" },
+  nl: {"off": "UIT", "on": "AAN", "speed": "Snelheid", "presets": "Modus", "osc": "Zwenken", "dir": "Omkeren", "unavailable": "Niet beschikbaar", "missing": "Entiteit niet gevonden: {id}"},
+  it: {"off": "SPENTO", "on": "ACCESO", "speed": "Velocità", "presets": "Modalità", "osc": "Oscillazione", "dir": "Inverti", "unavailable": "Non disponibile", "missing": "Entità non trovata: {id}"},
+  pt: {"off": "DESLIGADO", "on": "LIGADO", "speed": "Velocidade", "presets": "Modo", "osc": "Oscilar", "dir": "Inverter", "unavailable": "Indisponível", "missing": "Entidade não encontrada: {id}"},
+  pl: {"off": "WYŁ.", "on": "WŁ.", "speed": "Prędkość", "presets": "Tryb", "osc": "Oscylacja", "dir": "Odwróć", "unavailable": "Niedostępny", "missing": "Nie znaleziono encji: {id}"},
+  ru: {"off": "ВЫКЛ", "on": "ВКЛ", "speed": "Скорость", "presets": "Режим", "osc": "Качание", "dir": "Реверс", "unavailable": "Недоступно", "missing": "Сущность не найдена: {id}"},
+  zh: {"off": "关", "on": "开", "speed": "风速", "presets": "模式", "osc": "摆头", "dir": "反转", "unavailable": "不可用", "missing": "未找到实体：{id}"},
+  ar: {"off": "إيقاف", "on": "تشغيل", "speed": "السرعة", "presets": "الوضع", "osc": "التأرجح", "dir": "عكس", "unavailable": "غير متوفر", "missing": "الكيان غير موجود: {id}"},
 };
 
 // Rotor period in seconds for a speed percentage: 100 % -> 0.45 s per turn, 1 % -> 4 s; off -> 0 (no animation).
@@ -115,7 +126,7 @@ class SFFanCard extends SFCard {
     const s = this._st(); return s ? [s.state, s.attributes.percentage, s.attributes.preset_mode, s.attributes.oscillating, s.attributes.direction, s.attributes.friendly_name].join("|") + this._theme() : "-" + this._theme();
   }
   title() { const s = this._st(); return this._cfg.name || (s && s.attributes.friendly_name) || this._cfg.entity; }
-  tag() { const s = this._st(), L = sfLang(this._hass); if (!s) return null; return s.state === "unavailable" ? { cls: "bad", text: sfT(FAN_I18N, L, "unavailable") } : { cls: s.state === "on" ? "ok" : "warn", text: sfT(FAN_I18N, L, s.state === "on" ? "on" : "off") }; }
+  tag() { const s = this._st(), L = this._lang(); if (!s) return null; return s.state === "unavailable" ? { cls: "bad", text: sfT(FAN_I18N, L, "unavailable") } : { cls: s.state === "on" ? "ok" : "warn", text: sfT(FAN_I18N, L, s.state === "on" ? "on" : "off") }; }
   get css() { return `
     .stage { display:flex; justify-content:center; margin:2px 0 10px; } .stage svg { width:120px; height:120px; }
     .rotor { transform-origin:60px 60px; } .rotor.spin { animation:spin var(--p) linear infinite; } @keyframes spin { to { transform:rotate(360deg); } }
@@ -126,7 +137,7 @@ class SFFanCard extends SFCard {
     .chips { display:flex; flex-wrap:wrap; gap:6px; flex:1; } .chips button.on, button.on { background:rgb(var(--sf-cyan-rgb) / .3); border-color:var(--sf-cyan); color:var(--sf-strong); }
     .dis { opacity:.5; pointer-events:none; }`; }
   body() {
-    const s = this._st(), L = sfLang(this._hass), t = (k, v) => sfT(FAN_I18N, L, k, v);
+    const s = this._st(), L = this._lang(), t = (k, v) => sfT(FAN_I18N, L, k, v);
     if (!s) return `<div class="err">${sfEsc(t("missing", { id: this._cfg.entity }))}</div>`;
     const a = s.attributes || {}, on = s.state === "on", dead = s.state === "unavailable" || s.state === "unknown", feat = Number(a.supported_features) || 0;
     const pct = sfNum(a.percentage, on ? 100 : 0), per = fanPeriod(on, a.percentage == null ? NaN : pct), step = Math.max(1, sfNum(a.percentage_step, 1));
@@ -170,7 +181,7 @@ class SFFanCard extends SFCard {
 }
 sfRegister("sf-fan-card", SFFanCard, "SF Fan", "Fan card: animated rotor, speed slider, preset modes, oscillation and direction.");
 // ---- sf-bar-card ----------------------------------------------------------------------------------------------------------------------------
-const BAR_I18N = { en: { missing: "Not found", none: "No entities configured" }, fr: { missing: "Introuvable", none: "Aucune entité configurée" }, de: { missing: "Nicht gefunden", none: "Keine Entitäten konfiguriert" }, es: { missing: "No encontrada", none: "Sin entidades configuradas" } };
+const BAR_I18N = { en: { missing: "Not found", none: "No entities configured" }, fr: { missing: "Introuvable", none: "Aucune entité configurée" }, de: { missing: "Nicht gefunden", none: "Keine Entitäten konfiguriert" }, es: { missing: "No encontrada", none: "Sin entidades configuradas" }, nl: {"missing": "Niet gevonden", "none": "Geen entiteiten ingesteld"}, it: {"missing": "Non trovata", "none": "Nessuna entità configurata"}, pt: {"missing": "Não encontrada", "none": "Nenhuma entidade configurada"}, pl: {"missing": "Nie znaleziono", "none": "Brak skonfigurowanych encji"}, ru: {"missing": "Не найдено", "none": "Сущности не настроены"}, zh: {"missing": "未找到", "none": "未配置实体"}, ar: {"missing": "غير موجود", "none": "لم يتم إعداد أي كيан"}, };
 const BAR_COLORS = { cyan: "var(--sf-cyan)", green: "var(--sf-green)", amber: "var(--sf-amber)", red: "var(--sf-red)", violet: "var(--sf-violet)", grey: "var(--sf-grey)" };
 
 // Picks the severity band for a value: the band with the highest `from` that is <= value (bands may be given in any order).
@@ -198,7 +209,7 @@ class SFBarCard extends SFCard {
     .fill { position:absolute; inset:0 auto 0 0; border-radius:6px; background:var(--col); box-shadow:0 0 10px var(--col); transition:width .5s ease; opacity:.92; }
     .tick { position:absolute; top:-2px; bottom:-2px; width:2px; background:var(--sf-strong); opacity:.8; } .na { color:var(--sf-grey); }`; }
   body() {
-    const L = sfLang(this._hass), st = this._hass ? this._hass.states : {}, c = this._cfg;
+    const L = this._lang(), st = this._hass ? this._hass.states : {}, c = this._cfg;
     if (!c.rows.length) return `<div class="empty">${sfEsc(sfT(BAR_I18N, L, "none"))}</div>`;
     return c.rows.map((r) => {
       const s = st[r.entity], raw = s ? (r.attribute ? s.attributes[r.attribute] : s.state) : undefined, v = sfNum(raw);
@@ -220,6 +231,13 @@ const TODO_I18N = {
   fr: { title: "À faire", add: "Ajouter un élément…", addBtn: "Ajouter", done: "Terminés", clear: "Effacer les terminés", empty: "Rien à faire", err: "Liste illisible", missing: "Entité introuvable : {id}" },
   de: { title: "Aufgaben", add: "Eintrag hinzufügen…", addBtn: "Hinzufügen", done: "Erledigt", clear: "Erledigte löschen", empty: "Nichts zu tun", err: "Liste nicht lesbar", missing: "Entität nicht gefunden: {id}" },
   es: { title: "Tareas", add: "Añadir elemento…", addBtn: "Añadir", done: "Completadas", clear: "Borrar completadas", empty: "Nada que hacer", err: "No se puede leer la lista", missing: "Entidad no encontrada: {id}" },
+ nl: {"title": "Taken", "add": "Item toevoegen…", "addBtn": "Toevoegen", "done": "Voltooid", "clear": "Voltooide wissen", "empty": "Niets te doen", "err": "Lijst niet leesbaar", "missing": "Entiteit niet gevonden: {id}"},
+ it: {"title": "Da fare", "add": "Aggiungi elemento…", "addBtn": "Aggiungi", "done": "Completati", "clear": "Cancella completati", "empty": "Niente da fare", "err": "Elenco illeggibile", "missing": "Entità non trovata: {id}"},
+ pt: {"title": "Tarefas", "add": "Adicionar item…", "addBtn": "Adicionar", "done": "Concluídas", "clear": "Limpar concluídas", "empty": "Nada a fazer", "err": "Lista ilegível", "missing": "Entidade não encontrada: {id}"},
+ pl: {"title": "Do zrobienia", "add": "Dodaj pozycję…", "addBtn": "Dodaj", "done": "Ukończone", "clear": "Wyczyść ukończone", "empty": "Nic do zrobienia", "err": "Nie można odczytać listy", "missing": "Nie znaleziono encji: {id}"},
+ ru: {"title": "Задачи", "add": "Добавить пункт…", "addBtn": "Добавить", "done": "Выполнено", "clear": "Очистить выполненные", "empty": "Нечего делать", "err": "Не удалось прочитать список", "missing": "Сущность не найдена: {id}"},
+ zh: {"title": "待办", "add": "添加项目…", "addBtn": "添加", "done": "已完成", "clear": "清除已完成", "empty": "无待办事项", "err": "无法读取列表", "missing": "未找到实体：{id}"},
+ ar: {"title": "المهام", "add": "إضافة عنصر…", "addBtn": "إضافة", "done": "مكتملة", "clear": "مسح المكتملة", "empty": "لا شيء للقيام به", "err": "تعذّرت قراءة القائمة", "missing": "الكيان غير موجود: {id}"},
 };
 const TODO_MIN_INTERVAL = 3000;
 
@@ -236,7 +254,7 @@ class SFTodoCard extends SFCard {
     this._items = []; this._error = false; this._inflight = false; this._dirty = true; this._last = 0; this._showDone = false; return { ...c };
   }
   signature() { const s = this._hass && this._hass.states[this._cfg.entity], v = s ? s.state + ":" + (s.last_updated || "") : "-"; if (v !== this._tdSig) { this._tdSig = v; this._dirty = true; } return v + this._theme(); }
-  title() { return this._cfg.title || (this._st() && this._st().attributes.friendly_name) || sfT(TODO_I18N, sfLang(this._hass), "title"); }
+  title() { return this._cfg.title || (this._st() && this._st().attributes.friendly_name) || sfT(TODO_I18N, this._lang(), "title"); }
   _st() { return this._hass && this._hass.states[this._cfg.entity]; }
   tag() { const s = this._st(); return s && /^\d+$/.test(s.state) ? { cls: +s.state ? "warn" : "ok", text: s.state } : null; }
   get tick() { return 30000; }
@@ -259,7 +277,7 @@ class SFTodoCard extends SFCard {
     .sec { margin:12px 0 4px; display:flex; justify-content:space-between; align-items:center; font-family:Orbitron, ui-sans-serif, sans-serif; font-size:10px; letter-spacing:.2em; text-transform:uppercase; color:var(--sf-dim); }
     .sec button { font-size:10px; padding:2px 8px; }`; }
   body() {
-    const L = sfLang(this._hass), t = (k, v) => sfT(TODO_I18N, L, k, v);
+    const L = this._lang(), t = (k, v) => sfT(TODO_I18N, L, k, v);
     if (!this._st()) return `<div class="err">${sfEsc(t("missing", { id: this._cfg.entity }))}</div>`;
     const todo = this._items.filter((i) => !i.done), done = this._items.filter((i) => i.done);
     const item = (i) => `<div class="it ${i.done ? "d" : ""}"><button class="bx" data-act="tgl" data-u="${sfEsc(i.uid)}" data-d="${i.done ? 1 : 0}" role="checkbox" aria-checked="${i.done}" aria-label="${sfEsc(i.summary)}">${i.done ? "✓" : ""}</button><span class="tx">${sfEsc(i.summary)}</span>${i.due ? `<span class="due">${sfEsc(String(i.due).slice(0, 10))}</span>` : ""}</div>`;
@@ -292,6 +310,6 @@ class SFTodoCard extends SFCard {
   }
 }
 sfRegister("sf-todo-card", SFTodoCard, "SF To-do", "To-do / shopping list card: add, check off and clear items.");
-window.__sfControls = { fanPeriod, barColor, barFraction, todoItems };   // exposed for the test page only
+window.__sfControls = { i18n: { fan: FAN_I18N, bar: BAR_I18N, todo: TODO_I18N }, fanPeriod, barColor, barFraction, todoItems };   // exposed for the test page only
 
 })();

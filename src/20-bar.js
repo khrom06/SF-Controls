@@ -1,5 +1,5 @@
 // ---- sf-bar-card ----------------------------------------------------------------------------------------------------------------------------
-const BAR_I18N = { en: { missing: "Not found", none: "No entities configured" }, fr: { missing: "Introuvable", none: "Aucune entité configurée" }, de: { missing: "Nicht gefunden", none: "Keine Entitäten konfiguriert" }, es: { missing: "No encontrada", none: "Sin entidades configuradas" } };
+const BAR_I18N = { en: { missing: "Not found", none: "No entities configured" }, fr: { missing: "Introuvable", none: "Aucune entité configurée" }, de: { missing: "Nicht gefunden", none: "Keine Entitäten konfiguriert" }, es: { missing: "No encontrada", none: "Sin entidades configuradas" }, nl: {"missing": "Niet gevonden", "none": "Geen entiteiten ingesteld"}, it: {"missing": "Non trovata", "none": "Nessuna entità configurata"}, pt: {"missing": "Não encontrada", "none": "Nenhuma entidade configurada"}, pl: {"missing": "Nie znaleziono", "none": "Brak skonfigurowanych encji"}, ru: {"missing": "Не найдено", "none": "Сущности не настроены"}, zh: {"missing": "未找到", "none": "未配置实体"}, ar: {"missing": "غير موجود", "none": "لم يتم إعداد أي كيан"}, };
 const BAR_COLORS = { cyan: "var(--sf-cyan)", green: "var(--sf-green)", amber: "var(--sf-amber)", red: "var(--sf-red)", violet: "var(--sf-violet)", grey: "var(--sf-grey)" };
 
 // Picks the severity band for a value: the band with the highest `from` that is <= value (bands may be given in any order).
@@ -27,7 +27,7 @@ class SFBarCard extends SFCard {
     .fill { position:absolute; inset:0 auto 0 0; border-radius:6px; background:var(--col); box-shadow:0 0 10px var(--col); transition:width .5s ease; opacity:.92; }
     .tick { position:absolute; top:-2px; bottom:-2px; width:2px; background:var(--sf-strong); opacity:.8; } .na { color:var(--sf-grey); }`; }
   body() {
-    const L = sfLang(this._hass), st = this._hass ? this._hass.states : {}, c = this._cfg;
+    const L = this._lang(), st = this._hass ? this._hass.states : {}, c = this._cfg;
     if (!c.rows.length) return `<div class="empty">${sfEsc(sfT(BAR_I18N, L, "none"))}</div>`;
     return c.rows.map((r) => {
       const s = st[r.entity], raw = s ? (r.attribute ? s.attributes[r.attribute] : s.state) : undefined, v = sfNum(raw);

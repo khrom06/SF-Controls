@@ -13,7 +13,7 @@
 1. HACS → ⋮ → *Custom repositories* → add `https://github.com/khrom06/SF-Controls`, category **Dashboard**; install.
 2. Reload the browser (HACS registers the resource for you).
 
-All cards: light/dark theme (`theme: auto | dark | light`), languages en/fr/de/es, keyboard accessible, no dependencies.
+All cards: light/dark theme (`theme: auto | dark | light`), languages en, fr, es, de, nl, it, pt, pl, ru, zh, ar (RTL for Arabic; `language: xx` forces one), keyboard accessible, no dependencies.
 
 ## `sf-fan-card`
 
@@ -71,7 +71,7 @@ title: Shopping        # optional
 ## Tests
 
 ```bash
-./test/run.sh   # build check + 56 render checks in headless Chrome
+./test/run.sh   # build check + 535 render checks in headless Chrome
 ```
 
 ---

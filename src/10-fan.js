@@ -5,6 +5,13 @@ const FAN_I18N = {
   fr: { off: "ARRÊT", on: "MARCHE", speed: "Vitesse", presets: "Mode", osc: "Oscillation", dir: "Inverser", unavailable: "Indisponible", missing: "Entité introuvable : {id}" },
   de: { off: "AUS", on: "AN", speed: "Stufe", presets: "Modus", osc: "Schwenken", dir: "Umkehren", unavailable: "Nicht verfügbar", missing: "Entität nicht gefunden: {id}" },
   es: { off: "APAGADO", on: "ENCENDIDO", speed: "Velocidad", presets: "Modo", osc: "Oscilar", dir: "Invertir", unavailable: "No disponible", missing: "Entidad no encontrada: {id}" },
+  nl: {"off": "UIT", "on": "AAN", "speed": "Snelheid", "presets": "Modus", "osc": "Zwenken", "dir": "Omkeren", "unavailable": "Niet beschikbaar", "missing": "Entiteit niet gevonden: {id}"},
+  it: {"off": "SPENTO", "on": "ACCESO", "speed": "Velocità", "presets": "Modalità", "osc": "Oscillazione", "dir": "Inverti", "unavailable": "Non disponibile", "missing": "Entità non trovata: {id}"},
+  pt: {"off": "DESLIGADO", "on": "LIGADO", "speed": "Velocidade", "presets": "Modo", "osc": "Oscilar", "dir": "Inverter", "unavailable": "Indisponível", "missing": "Entidade não encontrada: {id}"},
+  pl: {"off": "WYŁ.", "on": "WŁ.", "speed": "Prędkość", "presets": "Tryb", "osc": "Oscylacja", "dir": "Odwróć", "unavailable": "Niedostępny", "missing": "Nie znaleziono encji: {id}"},
+  ru: {"off": "ВЫКЛ", "on": "ВКЛ", "speed": "Скорость", "presets": "Режим", "osc": "Качание", "dir": "Реверс", "unavailable": "Недоступно", "missing": "Сущность не найдена: {id}"},
+  zh: {"off": "关", "on": "开", "speed": "风速", "presets": "模式", "osc": "摆头", "dir": "反转", "unavailable": "不可用", "missing": "未找到实体：{id}"},
+  ar: {"off": "إيقاف", "on": "تشغيل", "speed": "السرعة", "presets": "الوضع", "osc": "التأرجح", "dir": "عكس", "unavailable": "غير متوفر", "missing": "الكيان غير موجود: {id}"},
 };
 
 // Rotor period in seconds for a speed percentage: 100 % -> 0.45 s per turn, 1 % -> 4 s; off -> 0 (no animation).
@@ -19,7 +26,7 @@ class SFFanCard extends SFCard {
     const s = this._st(); return s ? [s.state, s.attributes.percentage, s.attributes.preset_mode, s.attributes.oscillating, s.attributes.direction, s.attributes.friendly_name].join("|") + this._theme() : "-" + this._theme();
   }
   title() { const s = this._st(); return this._cfg.name || (s && s.attributes.friendly_name) || this._cfg.entity; }
-  tag() { const s = this._st(), L = sfLang(this._hass); if (!s) return null; return s.state === "unavailable" ? { cls: "bad", text: sfT(FAN_I18N, L, "unavailable") } : { cls: s.state === "on" ? "ok" : "warn", text: sfT(FAN_I18N, L, s.state === "on" ? "on" : "off") }; }
+  tag() { const s = this._st(), L = this._lang(); if (!s) return null; return s.state === "unavailable" ? { cls: "bad", text: sfT(FAN_I18N, L, "unavailable") } : { cls: s.state === "on" ? "ok" : "warn", text: sfT(FAN_I18N, L, s.state === "on" ? "on" : "off") }; }
   get css() { return `
     .stage { display:flex; justify-content:center; margin:2px 0 10px; } .stage svg { width:120px; height:120px; }
     .rotor { transform-origin:60px 60px; } .rotor.spin { animation:spin var(--p) linear infinite; } @keyframes spin { to { transform:rotate(360deg); } }
@@ -30,7 +37,7 @@ class SFFanCard extends SFCard {
     .chips { display:flex; flex-wrap:wrap; gap:6px; flex:1; } .chips button.on, button.on { background:rgb(var(--sf-cyan-rgb) / .3); border-color:var(--sf-cyan); color:var(--sf-strong); }
     .dis { opacity:.5; pointer-events:none; }`; }
   body() {
-    const s = this._st(), L = sfLang(this._hass), t = (k, v) => sfT(FAN_I18N, L, k, v);
+    const s = this._st(), L = this._lang(), t = (k, v) => sfT(FAN_I18N, L, k, v);
     if (!s) return `<div class="err">${sfEsc(t("missing", { id: this._cfg.entity }))}</div>`;
     const a = s.attributes || {}, on = s.state === "on", dead = s.state === "unavailable" || s.state === "unknown", feat = Number(a.supported_features) || 0;
     const pct = sfNum(a.percentage, on ? 100 : 0), per = fanPeriod(on, a.percentage == null ? NaN : pct), step = Math.max(1, sfNum(a.percentage_step, 1));
