@@ -1,0 +1,74 @@
+<!doctype html><meta charset="utf-8"><body><pre id="result">pending</pre>
+<script src="lib.js"></script><script src="../dist/sf-controls.js"></script>
+<script>
+(async () => {
+  const { check, eq, state, hass, mount, text, q, done, sleep } = T, X = window.__sfControls;
+  const ev = (el, type) => el.dispatchEvent(new Event(type, { bubbles: true }));
+
+  // ================= pure helpers =================
+  eq(X.fanPeriod(false, 80), 0, "off -> no rotation"); check(X.fanPeriod(true, 100) < X.fanPeriod(true, 10), "faster at higher speed");
+  check(X.fanPeriod(true, NaN) > 0 && X.fanPeriod(true, 1000) === X.fanPeriod(true, 100) && X.fanPeriod(true, -5) === X.fanPeriod(true, 1), "period is clamped and NaN-safe");
+  const sev = [{ from: 90, color: "red" }, { from: 0, color: "green" }, { from: 70, color: "amber" }];
+  eq([X.barColor(10, sev, "cyan"), X.barColor(75, sev, "cyan"), X.barColor(95, sev, "cyan")], ["var(--sf-green)", "var(--sf-amber)", "var(--sf-red)"], "severity bands (any order)");
+  eq(X.barColor(5, [], "cyan"), "var(--sf-cyan)", "no bands -> fallback"); eq(X.barColor(5, [{ from: 0, color: "#ff8800" }], "cyan"), "#ff8800", "hex colour accepted");
+  eq(X.barColor(5, [{ from: 0, color: "red; background:url(x)" }], "cyan"), "var(--sf-cyan)", "CSS injection through colour rejected");
+  eq([X.barFraction(50, 0, 100), X.barFraction(-5, 0, 100), X.barFraction(500, 0, 100), X.barFraction(1, 5, 5), X.barFraction(NaN, 0, 1)], [0.5, 0, 1, 0, 0], "fraction clamps, never NaN");
+  eq(X.todoItems({ response: { "todo.a": { items: [{ uid: "1", summary: "Milk", status: "needs_action" }, { summary: "Eggs", status: "completed" }, { uid: "x" }, null] } } }, "todo.a").map((i) => i.uid + i.done), ["1false", "Eggstrue"], "todo items normalised, junk dropped");
+  eq(X.todoItems(null, "todo.a"), [], "todo items: null response");
+
+  // ================= fan =================
+  const fan = (a = {}, s = "on") => state("fan.f", s, { friendly_name: "Living <b>fan</b>", percentage: 60, percentage_step: 20, preset_modes: ["auto", "sleep"], preset_mode: "auto", oscillating: false, direction: "forward", supported_features: 15, ...a });
+  let h = hass([fan()]), el = mount("sf-fan-card", { entity: "fan.f" }, h);
+  check(q(el, ".blade").length === 3, "3 blades"); check(q(el, ".rotor.spin").length === 1, "spinning when on"); check(text(el).includes("Living") && !el.shadowRoot.querySelector("b"), "name escaped");
+  eq(q(el, "#sl")[0].step, "20", "slider uses the fan's percentage_step");
+  const sl = q(el, "#sl")[0]; sl.value = "40"; ev(sl, "input"); check(text(el).includes("40%"), "label follows the slider while dragging");
+  ev(sl, "change"); eq(h.calls.pop(), { d: "fan", s: "set_percentage", data: { entity_id: "fan.f", percentage: 40 } }, "slider -> set_percentage");
+  sl.value = "0"; ev(sl, "change"); eq(h.calls.pop().s, "turn_off", "slider to 0 -> turn_off");
+  q(el, '[data-act="preset"][data-m="sleep"]')[0].click(); eq(h.calls.pop(), { d: "fan", s: "set_preset_mode", data: { entity_id: "fan.f", preset_mode: "sleep" } }, "preset");
+  q(el, '[data-act="osc"]')[0].click(); eq(h.calls.pop().data.oscillating, true, "oscillate toggles"); q(el, '[data-act="dir"]')[0].click(); eq(h.calls.pop().data.direction, "reverse", "direction toggles");
+  q(el, '[data-act="power"]')[0].click(); eq(h.calls.pop().s, "turn_off", "power off when on");
+  el = mount("sf-fan-card", { entity: "fan.f" }, hass([fan({}, "off")])); check(q(el, ".rotor.spin").length === 0, "still when off"); q(el, '[data-act="power"]')[0].click();
+  el = mount("sf-fan-card", { entity: "fan.f" }, hass([fan({ preset_modes: undefined, oscillating: undefined, direction: undefined, supported_features: 1 })])); check(q(el, '[data-act="preset"]').length === 0 && q(el, '[data-act="osc"]').length === 0, "controls the fan lacks are hidden");
+  el = mount("sf-fan-card", { entity: "fan.f" }, hass([fan({}, "unavailable")])); check(text(el).includes("Unavailable") && q(el, ".dis").length > 0, "unavailable state");
+  el = mount("sf-fan-card", { entity: "fan.nope" }, hass([])); check(text(el).includes("Entity not found"), "missing entity");
+  for (const bad of [{ entity: "light.x" }, {}, { entity: 5 }]) { let t = false; try { mount("sf-fan-card", bad); } catch (e) { t = true; } check(t, "fan rejects " + JSON.stringify(bad)); }
+  // a state update while the finger is on the slider must not rebuild it
+  el = mount("sf-fan-card", { entity: "fan.f" }, hass([fan()])); const sl2 = q(el, "#sl")[0]; sl2.dispatchEvent(new Event("pointerdown", { bubbles: true })); el.hass = hass([fan({ percentage: 100 })]); check(q(el, "#sl")[0] === sl2, "slider kept during drag");
+
+  // ================= bar =================
+  h = hass([state("sensor.t", 72.46, { friendly_name: "Tank <i>1</i>", unit_of_measurement: "%" }), state("sensor.u", "unavailable", { friendly_name: "Dead" }), state("sensor.a", 5, { level: "42.5" })]);
+  el = mount("sf-bar-card", { title: "Levels", entities: [{ entity: "sensor.t", severity: sev, target: 50 }, "sensor.u", "sensor.ghost", { entity: "sensor.a", attribute: "level", unit: "L", min: 0, max: 50, decimals: 2 }] }, h);
+  eq(q(el, ".row").length, 4, "4 rows"); check(text(el).includes("72 %") || text(el).includes("72.5 %") || text(el).includes("72 "), "value + unit from the entity: " + text(el));
+  check(q(el, ".fill")[0].style.width === "72.5%" || q(el, ".fill")[0].style.width === "72.4%" || q(el, ".fill")[0].style.width === "72.5%", "fill width = 72.x %: " + q(el, ".fill")[0].style.width);
+  check(q(el, ".fill")[0].getAttribute("style").includes("--sf-amber"), "severity colour applied (72 -> amber)"); check(q(el, ".tick").length === 1, "target marker");
+  check(text(el).includes("Not found") && text(el).includes("unavailable"), "missing and unavailable shown as text"); check(text(el).includes("42.50 L"), "attribute + decimals + custom unit: " + text(el));
+  check(!el.shadowRoot.querySelector("i:not(.tick):not(.c)"), "names escaped"); check(!text(el).includes("NaN"), "no NaN");
+  let got; el.addEventListener("hass-more-info", (e) => { got = e.detail.entityId; }); q(el, ".row")[0].click(); eq(got, "sensor.t", "row opens more-info");
+  el = mount("sf-bar-card", { entities: [] }, hass([])); check(text(el).includes("No entities"), "empty config message");
+  el = mount("sf-bar-card", { entity: "sensor.t", min: 0, max: 0 }, h); check(q(el, ".fill")[0].style.width === "0%", "min == max does not break");
+  el = mount("sf-bar-card", { entity: "sensor.t" }, hass([state("sensor.t", 50)])); check(!el.shadowRoot.querySelector(".head"), "no header when there is no title");
+
+  // ================= to-do =================
+  let items = [{ uid: "u1", summary: "Milk", status: "needs_action" }, { uid: "u2", summary: "Eggs <b>x</b>", status: "needs_action", due: "2026-12-24" }, { uid: "u3", summary: "Bread", status: "completed" }];
+  const th = hass([state("todo.s", 2, { friendly_name: "Shopping" })], { wsResult: (m) => ({ response: { "todo.s": { items } } }) });
+  el = mount("sf-todo-card", { entity: "todo.s" }, th); await sleep(60);
+  const wsCalls = () => th.ws.filter((m) => m.service === "get_items").length;
+  eq(wsCalls(), 1, "one list query on load"); check(text(el).includes("Milk") && text(el).includes("2026-12-24") && !el.shadowRoot.querySelector(".tx b"), "items shown, escaped, due date");
+  check(text(el).includes("Completed (1)") && !text(el).includes("Bread"), "completed items collapsed"); check(text(el).includes("Shopping") && q(el, ".tag.warn").length === 1, "title and pending count tag");
+  q(el, '[data-act="showdone"]')[0].click(); check(text(el).includes("Bread"), "completed section expands");
+  q(el, '[data-act="tgl"][data-u="u1"]')[0].click(); await sleep(60);
+  eq(th.calls[0], { d: "todo", s: "update_item", data: { entity_id: "todo.s", item: "u1", status: "completed" } }, "check off -> update_item with the uid");
+  const inp = q(el, "#ni")[0]; inp.value = "  Butter "; el.shadowRoot.querySelector("form").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); await sleep(60);
+  eq(th.calls[1], { d: "todo", s: "add_item", data: { entity_id: "todo.s", item: "Butter" } }, "form submit -> add_item (trimmed)");
+  el.shadowRoot.querySelector("form").dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); eq(th.calls.length, 2, "empty submit does nothing");
+  q(el, '[data-act="clear"]')[0].click(); await sleep(60); eq(th.calls[2].s, "remove_completed_items", "clear completed");
+  // storm of state updates -> bounded queries
+  const before = wsCalls(); for (let i = 0; i < 100; i++) el.hass = Object.assign({}, th, { states: { "todo.s": state("todo.s", i, { friendly_name: "Shopping" }, { last_updated: new Date(Date.now() + i).toISOString() }) } }); await sleep(60);
+  check(wsCalls() - before <= 1, "a storm of updates triggers at most one extra query: " + (wsCalls() - before));
+  const bad = hass([state("todo.s", 1)], { wsResult: () => { throw new Error("x"); } }); el = mount("sf-todo-card", { entity: "todo.s" }, bad); await sleep(60); check(text(el).includes("Could not read the list"), "error state");
+  el = mount("sf-todo-card", { entity: "todo.nope" }, hass([])); check(text(el).includes("Entity not found"), "missing entity");
+  let t2 = false; try { mount("sf-todo-card", { entity: "sensor.x" }); } catch (e) { t2 = true; } check(t2, "todo rejects non-todo entity");
+  el = mount("sf-todo-card", { entity: "todo.s" }, Object.assign(hass([state("todo.s", 0)], { wsResult: () => ({ response: { "todo.s": { items: [] } } }) }), { language: "fr" })); await sleep(60); check(text(el).includes("Rien à faire"), "French empty state");
+  done();
+})().catch((e) => { document.getElementById("result").textContent = JSON.stringify({ ok: false, checks: 0, failures: ["exception: " + e.message + " " + (e.stack || "").split("\n")[1]] }); });
+</script>

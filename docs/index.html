@@ -1,0 +1,26 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SF Controls — live demo (fake data)</title>
+<style>body{margin:0;padding:24px;background:#0a1220;font-family:system-ui,sans-serif;color:#cfefff}
+h1{font:700 14px Orbitron,sans-serif;letter-spacing:.2em;color:#00e5ff} .g{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:18px;max-width:1100px}
+.l{background:#e9f1f8;padding:14px;border-radius:14px}</style>
+<h1>SF CONTROLS · DEMO WITH FAKE DATA</h1><div class="g" id="g"></div>
+<script src="sf-controls.js"></script>
+<script>
+const st = (id, state, a = {}) => ({ entity_id: id, state: String(state), attributes: a, last_updated: new Date().toISOString(), last_changed: new Date().toISOString() });
+const states = {
+  "fan.living": st("fan.living", "on", { friendly_name: "Living room fan", percentage: 66, percentage_step: 33.3, preset_modes: ["auto", "sleep", "turbo"], preset_mode: "auto", oscillating: true, direction: "forward", supported_features: 15 }),
+  "sensor.tank": st("sensor.tank", 78, { friendly_name: "Water tank", unit_of_measurement: "%" }), "sensor.ev": st("sensor.ev", 31, { friendly_name: "Car battery", unit_of_measurement: "%" }),
+  "sensor.temp": st("sensor.temp", 21.4, { friendly_name: "Living room", unit_of_measurement: "°C" }), "sensor.load": st("sensor.load", 3.4, { friendly_name: "House load", unit_of_measurement: "kW" }),
+  "todo.shopping": st("todo.shopping", 3, { friendly_name: "Shopping list" }),
+};
+const items = [{ uid: "1", summary: "Oat milk", status: "needs_action" }, { uid: "2", summary: "Coffee beans", status: "needs_action", due: "2026-11-08" }, { uid: "3", summary: "Dishwasher tablets", status: "needs_action" }, { uid: "4", summary: "Bread", status: "completed" }];
+const hass = (dark) => ({ language: "en", themes: { darkMode: dark }, states, callService() { return Promise.resolve(); }, callWS: () => Promise.resolve({ response: { "todo.shopping": { items } } }) });
+const mk = (tag, cfg, light) => { const w = document.createElement("div"); if (light) w.className = "l"; const el = document.createElement(tag); w.appendChild(el); el.setConfig(cfg); el.hass = hass(!light); document.getElementById("g").appendChild(w); };
+const bars = { title: "Levels", entities: [
+  { entity: "sensor.tank", severity: [{ from: 0, color: "red" }, { from: 25, color: "amber" }, { from: 50, color: "green" }] },
+  { entity: "sensor.ev", target: 80, severity: [{ from: 0, color: "red" }, { from: 25, color: "amber" }, { from: 50, color: "green" }] },
+  { entity: "sensor.temp", min: 10, max: 30, color: "violet" },
+  { entity: "sensor.load", min: 0, max: 9, severity: [{ from: 0, color: "green" }, { from: 5, color: "amber" }, { from: 7, color: "red" }] }] };
+mk("sf-fan-card", { entity: "fan.living" }); mk("sf-bar-card", bars); mk("sf-todo-card", { entity: "todo.shopping" });
+mk("sf-fan-card", { entity: "fan.living", theme: "light" }, true); mk("sf-bar-card", { ...bars, theme: "light" }, true); mk("sf-todo-card", { entity: "todo.shopping", theme: "light" }, true);
+</script></html>
