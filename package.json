@@ -1,5 +1,6 @@
 {
   "name": "sf-controls",
+  "version": "1.0.1",
   "private": true,
   "description": "Build tooling for SF-Controls (no runtime dependency: HACS loads dist/ directly, no bundler).",
   "scripts": {
