@@ -1,17 +1,10 @@
-(() => {
-"use strict";
-// SF-kit 1.0 — shared design tokens and card base class. The same file ships in every SF-* card repository (keep them identical).
-// Visual language: the palette and HUD frame of SF-Cards (https://github.com/khrom06/SF-Cards), so cards from different repos sit side by side.
-const SF_VARS_DARK = `--sf-cyan:#00e5ff; --sf-amber:#ffb300; --sf-red:#ff3355; --sf-green:#2bff88; --sf-grey:#5b6b7d; --sf-text:#cfefff; --sf-dim:#7fa3bd;
+(()=>{"use strict";const z=`
+  :host { display:block; --sf-cyan:#00e5ff; --sf-amber:#ffb300; --sf-red:#ff3355; --sf-green:#2bff88; --sf-grey:#5b6b7d; --sf-text:#cfefff; --sf-dim:#7fa3bd;
     --sf-cyan-rgb:0 229 255; --sf-amber-rgb:255 179 0; --sf-red-rgb:255 51 85; --sf-green-rgb:43 255 136; --sf-fg-rgb:255 255 255; --sf-strong:#fff;
-    --sf-bg0:#0d2440; --sf-bg1:#06101d; --sf-bg2:#03080f; --sf-on-accent:#03080f; --sf-violet:#b388ff; --sf-violet-rgb:179 136 255;`;
-const SF_VARS_LIGHT = `--sf-cyan:#00798f; --sf-amber:#a85f00; --sf-red:#c8173d; --sf-green:#08783f; --sf-grey:#52687a; --sf-text:#1c3a4e; --sf-dim:#37536a;
+    --sf-bg0:#0d2440; --sf-bg1:#06101d; --sf-bg2:#03080f; --sf-on-accent:#03080f; --sf-violet:#b388ff; --sf-violet-rgb:179 136 255; }
+  :host([theme="light"]) { --sf-cyan:#00798f; --sf-amber:#a85f00; --sf-red:#c8173d; --sf-green:#08783f; --sf-grey:#52687a; --sf-text:#1c3a4e; --sf-dim:#37536a;
     --sf-cyan-rgb:0 121 143; --sf-amber-rgb:168 95 0; --sf-red-rgb:200 23 61; --sf-green-rgb:8 120 63; --sf-fg-rgb:4 40 62; --sf-strong:#04141f;
-    --sf-bg0:#fbfdff; --sf-bg1:#eef5fb; --sf-bg2:#e2edf6; --sf-on-accent:#fff; --sf-violet:#6a3bc4; --sf-violet-rgb:106 59 196;`;
-
-const SF_BASE_CSS = `
-  :host { display:block; ${SF_VARS_DARK} }
-  :host([theme="light"]) { ${SF_VARS_LIGHT} }
+    --sf-bg0:#fbfdff; --sf-bg1:#eef5fb; --sf-bg2:#e2edf6; --sf-on-accent:#fff; --sf-violet:#6a3bc4; --sf-violet-rgb:106 59 196; }
   * { box-sizing:border-box; }
   :host([dir="rtl"]) .hud { direction:rtl; } :host([dir="rtl"]) svg, :host([dir="rtl"]) .track, :host([dir="rtl"]) input[type=range] { direction:ltr; }
   .hud { position:relative; overflow:hidden; border-radius:14px; padding:16px 18px 18px; color:var(--sf-text);
@@ -37,97 +30,8 @@ const SF_BASE_CSS = `
   button:hover { background:rgb(var(--sf-cyan-rgb) / .2); }
   @media (pointer: coarse) { button, .row { min-height:40px; } }
   @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; } }
-`;
-
-const sfEsc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const sfNum = (v, d = NaN) => { const n = parseFloat(v); return Number.isFinite(n) ? n : d; };
-const sfLang = (hass) => String((hass && (hass.locale?.language || hass.language)) || "en").slice(0, 2).toLowerCase();
-// Translation lookup with English fallback: sfT(dict, lang, key, {n: 3}) replaces {n}.
-const sfT = (dict, lang, key, vars) => {
-  let s = (dict[lang] && dict[lang][key]) ?? (dict.en && dict.en[key]) ?? key;
-  // In right-to-left text, numbers with Latin units are isolated so "5 min" is not scrambled by the bidi algorithm.
-  if (vars) for (const k of Object.keys(vars)) s = s.split("{" + k + "}").join(lang === "ar" ? "\u2066" + vars[k] + "\u2069" : String(vars[k]));
-  return s;
-};
-// Human duration from seconds: "45 s", "12 min", "3 h 05", "2 d 4 h".
-const sfAge = (sec) => {
-  if (!Number.isFinite(sec) || sec < 0) return "–";
-  if (sec < 90) return Math.round(sec) + " s";
-  const m = Math.floor(sec / 60); if (m < 90) return m + " min";
-  const h = Math.floor(m / 60); if (h < 48) return h + " h " + String(m % 60).padStart(2, "0");
-  return Math.floor(h / 24) + " d " + (h % 24) + " h";
-};
-const sfName = (st, id) => (st && st.attributes && st.attributes.friendly_name) || id;
-const sfMoreInfo = (el, entityId) => el.dispatchEvent(new CustomEvent("hass-more-info", { detail: { entityId }, bubbles: true, composed: true }));
-
-// Base class. Subclasses provide: normalize(config) -> config, signature() -> string (cheap; the card re-renders only when it changes),
-// body() -> html string, title(), tag() (optional {cls,text}), css (optional), onAct(el, ev) for [data-act] clicks, tick (ms, optional timer).
-// Re-rendering never loops: it happens on (a) a new signature, (b) setConfig, (c) the optional timer, nothing else.
-class SFCard extends HTMLElement {
-  constructor() {
-    super(); this.attachShadow({ mode: "open" }); this._cfg = null; this._hass = null; this._sig = null; this._timer = null;
-    this.shadowRoot.addEventListener("click", (ev) => { const el = ev.target.closest && ev.target.closest("[data-act]"); if (el && this.onAct) this.onAct(el, ev); });
-    this.shadowRoot.addEventListener("keydown", (ev) => { if ((ev.key === "Enter" || ev.key === " ") && ev.target.matches && ev.target.matches("[data-act][role=button]")) { ev.preventDefault(); ev.target.click(); } });
-  }
-  setConfig(c) { if (!c || typeof c !== "object") throw new Error("Invalid configuration"); this._cfg = this.normalize(c); this._sig = null; this._draw(); }
-  set hass(h) { this._hass = h; if (!this._cfg) return; const s = this.signature(); if (s !== this._sig) { this._sig = s; this._draw(); } }
-  get hass() { return this._hass; }
-  connectedCallback() { if (this.tick && !this._timer) this._timer = setInterval(() => this._draw(), this.tick); }
-  disconnectedCallback() { if (this._timer) { clearInterval(this._timer); this._timer = null; } }
-  // Language: the card's own `language` option wins, otherwise the Home Assistant UI language (first two letters, e.g. zh-Hans -> zh).
-  _lang() { const o = this._cfg && this._cfg.language; return typeof o === "string" && o ? o.slice(0, 2).toLowerCase() : sfLang(this._hass); }
-  getCardSize() { return 3; }
-  _theme() { const t = this._cfg && this._cfg.theme; if (t === "light" || t === "dark") return t; return this._hass && this._hass.themes && this._hass.themes.darkMode === false ? "light" : "dark"; }
-  _draw() {
-    if (!this._cfg) return;
-    const root = this.shadowRoot, ae = root.activeElement;
-    const keep = ae && ae.id ? { id: ae.id, value: ae.value, s: ae.selectionStart, e: ae.selectionEnd } : null;
-    this.setAttribute("theme", this._theme()); this.setAttribute("dir", this._lang() === "ar" ? "rtl" : "ltr");
-    let inner;
-    try {
-      const tag = this.tag ? this.tag() : null, ttl = this.title() || "";
-      inner = `<div class="hud"><i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i>
-        ${ttl || tag ? `<div class="head"><span class="grow">${sfEsc(ttl)}</span>${tag ? `<span class="tag ${tag.cls}">${sfEsc(tag.text)}</span>` : ""}</div>` : ""}${this.body()}</div>`;
-    } catch (e) { inner = `<div class="hud"><div class="err">${sfEsc(this.constructor.name)}: ${sfEsc(e && e.message)}</div></div>`; }
-    root.innerHTML = `<style>${SF_BASE_CSS}${this.css || ""}</style>${inner}`;
-    if (keep) { const n = root.getElementById(keep.id); if (n) { if (n.value !== undefined && n.tagName === "INPUT" && n.type !== "range") n.value = keep.value; n.focus(); try { n.setSelectionRange(keep.s, keep.e); } catch (e) { /* not a text input */ } } }
-  }
-}
-const sfRegister = (tag, cls, name, description) => {
-  if (!customElements.get(tag)) customElements.define(tag, cls);
-  window.customCards = window.customCards || [];
-  if (!window.customCards.some((c) => c.type === tag)) window.customCards.push({ type: tag, name, description, preview: false });
-};
-// ---- sf-fan-card ----------------------------------------------------------------------------------------------------------------------------
-// Fan features (Home Assistant bit flags): SET_SPEED 1, OSCILLATE 2, DIRECTION 4, PRESET_MODE 8.
-const FAN_I18N = {
-  en: { off: "OFF", on: "ON", speed: "Speed", presets: "Mode", osc: "Oscillate", dir: "Reverse", unavailable: "Unavailable", missing: "Entity not found: {id}" },
-  fr: { off: "ARRÊT", on: "MARCHE", speed: "Vitesse", presets: "Mode", osc: "Oscillation", dir: "Inverser", unavailable: "Indisponible", missing: "Entité introuvable : {id}" },
-  de: { off: "AUS", on: "AN", speed: "Stufe", presets: "Modus", osc: "Schwenken", dir: "Umkehren", unavailable: "Nicht verfügbar", missing: "Entität nicht gefunden: {id}" },
-  es: { off: "APAGADO", on: "ENCENDIDO", speed: "Velocidad", presets: "Modo", osc: "Oscilar", dir: "Invertir", unavailable: "No disponible", missing: "Entidad no encontrada: {id}" },
-  nl: {"off": "UIT", "on": "AAN", "speed": "Snelheid", "presets": "Modus", "osc": "Zwenken", "dir": "Omkeren", "unavailable": "Niet beschikbaar", "missing": "Entiteit niet gevonden: {id}"},
-  it: {"off": "SPENTO", "on": "ACCESO", "speed": "Velocità", "presets": "Modalità", "osc": "Oscillazione", "dir": "Inverti", "unavailable": "Non disponibile", "missing": "Entità non trovata: {id}"},
-  pt: {"off": "DESLIGADO", "on": "LIGADO", "speed": "Velocidade", "presets": "Modo", "osc": "Oscilar", "dir": "Inverter", "unavailable": "Indisponível", "missing": "Entidade não encontrada: {id}"},
-  pl: {"off": "WYŁ.", "on": "WŁ.", "speed": "Prędkość", "presets": "Tryb", "osc": "Oscylacja", "dir": "Odwróć", "unavailable": "Niedostępny", "missing": "Nie znaleziono encji: {id}"},
-  ru: {"off": "ВЫКЛ", "on": "ВКЛ", "speed": "Скорость", "presets": "Режим", "osc": "Качание", "dir": "Реверс", "unavailable": "Недоступно", "missing": "Сущность не найдена: {id}"},
-  zh: {"off": "关", "on": "开", "speed": "风速", "presets": "模式", "osc": "摆头", "dir": "反转", "unavailable": "不可用", "missing": "未找到实体：{id}"},
-  ar: {"off": "إيقاف", "on": "تشغيل", "speed": "السرعة", "presets": "الوضع", "osc": "التأرجح", "dir": "عكس", "unavailable": "غير متوفر", "missing": "الكيان غير موجود: {id}"},
-};
-
-// Rotor period in seconds for a speed percentage: 100 % -> 0.45 s per turn, 1 % -> 4 s; off -> 0 (no animation).
-function fanPeriod(on, pct) { if (!on) return 0; const p = Math.min(100, Math.max(1, Number.isFinite(pct) ? pct : 50)); return +(4 - (p - 1) * (3.55 / 99)).toFixed(2); }
-
-class SFFanCard extends SFCard {
-  static getStubConfig() { return { entity: "fan.living_room" }; }
-  normalize(c) { if (typeof c.entity !== "string" || !c.entity.startsWith("fan.")) throw new Error("entity: a fan.* entity is required"); this._drag = false; return { ...c }; }
-  _st() { return this._hass && this._hass.states[this._cfg.entity]; }
-  signature() {
-    if (this._drag) return this._sig;   // do not re-render under the user's finger
-    const s = this._st(); return s ? [s.state, s.attributes.percentage, s.attributes.preset_mode, s.attributes.oscillating, s.attributes.direction, s.attributes.friendly_name].join("|") + this._theme() : "-" + this._theme();
-  }
-  title() { const s = this._st(); return this._cfg.name || (s && s.attributes.friendly_name) || this._cfg.entity; }
-  tag() { const s = this._st(), L = this._lang(); if (!s) return null; return s.state === "unavailable" ? { cls: "bad", text: sfT(FAN_I18N, L, "unavailable") } : { cls: s.state === "on" ? "ok" : "warn", text: sfT(FAN_I18N, L, s.state === "on" ? "on" : "off") }; }
-  get css() { return `
+`,a=r=>String(r??"").replace(/[&<>"']/g,t=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[t]),f=(r,t=NaN)=>{const e=parseFloat(r);return Number.isFinite(e)?e:t},F=r=>String(r&&(r.locale?.language||r.language)||"en").slice(0,2).toLowerCase(),g=(r,t,e,s)=>{let i=(r[t]&&r[t][e])??(r.en&&r.en[e])??e;if(s)for(const n of Object.keys(s))i=i.split("{"+n+"}").join(t==="ar"?"\u2066"+s[n]+"\u2069":String(s[n]));return i},j=r=>{if(!Number.isFinite(r)||r<0)return"\u2013";if(r<90)return Math.round(r)+" s";const t=Math.floor(r/60);if(t<90)return t+" min";const e=Math.floor(t/60);return e<48?e+" h "+String(t%60).padStart(2,"0"):Math.floor(e/24)+" d "+e%24+" h"},V=(r,t)=>r&&r.attributes&&r.attributes.friendly_name||t,M=(r,t)=>r.dispatchEvent(new CustomEvent("hass-more-info",{detail:{entityId:t},bubbles:!0,composed:!0}));class b extends HTMLElement{constructor(){super(),this.attachShadow({mode:"open"}),this._cfg=null,this._hass=null,this._sig=null,this._timer=null,this.shadowRoot.addEventListener("click",t=>{const e=t.target.closest&&t.target.closest("[data-act]");e&&this.onAct&&this.onAct(e,t)}),this.shadowRoot.addEventListener("keydown",t=>{(t.key==="Enter"||t.key===" ")&&t.target.matches&&t.target.matches("[data-act][role=button]")&&(t.preventDefault(),t.target.click())})}setConfig(t){if(!t||typeof t!="object")throw new Error("Invalid configuration");this._cfg=this.normalize(t),this._sig=null,this._draw()}set hass(t){if(this._hass=t,!this._cfg)return;const e=this.signature();e!==this._sig&&(this._sig=e,this._draw())}get hass(){return this._hass}connectedCallback(){this.tick&&!this._timer&&(this._timer=setInterval(()=>this._draw(),this.tick))}disconnectedCallback(){this._timer&&(clearInterval(this._timer),this._timer=null)}_lang(){const t=this._cfg&&this._cfg.language;return typeof t=="string"&&t?t.slice(0,2).toLowerCase():F(this._hass)}getCardSize(){return 3}_theme(){const t=this._cfg&&this._cfg.theme;return t==="light"||t==="dark"?t:this._hass&&this._hass.themes&&this._hass.themes.darkMode===!1?"light":"dark"}_draw(){if(!this._cfg)return;const t=this.shadowRoot,e=t.activeElement,s=e&&e.id?{id:e.id,value:e.value,s:e.selectionStart,e:e.selectionEnd}:null;this.setAttribute("theme",this._theme()),this.setAttribute("dir",this._lang()==="ar"?"rtl":"ltr");let i;try{const n=this.tag?this.tag():null,d=this.title()||"";i=`<div class="hud"><i class="c tl"></i><i class="c tr"></i><i class="c bl"></i><i class="c br"></i>
+        ${d||n?`<div class="head"><span class="grow">${a(d)}</span>${n?`<span class="tag ${n.cls}">${a(n.text)}</span>`:""}</div>`:""}${this.body()}</div>`}catch(n){i=`<div class="hud"><div class="err">${a(this.constructor.name)}: ${a(n&&n.message)}</div></div>`}if(t.innerHTML=`<style>${z}${this.css||""}</style>${i}`,s){const n=t.getElementById(s.id);if(n){n.value!==void 0&&n.tagName==="INPUT"&&n.type!=="range"&&(n.value=s.value),n.focus();try{n.setSelectionRange(s.s,s.e)}catch{}}}}}const v=(r,t,e,s)=>{customElements.get(r)||customElements.define(r,t),window.customCards=window.customCards||[],window.customCards.some(i=>i.type===r)||window.customCards.push({type:r,name:e,description:s,preview:!1})},m={en:{off:"OFF",on:"ON",speed:"Speed",presets:"Mode",osc:"Oscillate",dir:"Reverse",unavailable:"Unavailable",missing:"Entity not found: {id}"},fr:{off:"ARR\xCAT",on:"MARCHE",speed:"Vitesse",presets:"Mode",osc:"Oscillation",dir:"Inverser",unavailable:"Indisponible",missing:"Entit\xE9 introuvable : {id}"},de:{off:"AUS",on:"AN",speed:"Stufe",presets:"Modus",osc:"Schwenken",dir:"Umkehren",unavailable:"Nicht verf\xFCgbar",missing:"Entit\xE4t nicht gefunden: {id}"},es:{off:"APAGADO",on:"ENCENDIDO",speed:"Velocidad",presets:"Modo",osc:"Oscilar",dir:"Invertir",unavailable:"No disponible",missing:"Entidad no encontrada: {id}"},nl:{off:"UIT",on:"AAN",speed:"Snelheid",presets:"Modus",osc:"Zwenken",dir:"Omkeren",unavailable:"Niet beschikbaar",missing:"Entiteit niet gevonden: {id}"},it:{off:"SPENTO",on:"ACCESO",speed:"Velocit\xE0",presets:"Modalit\xE0",osc:"Oscillazione",dir:"Inverti",unavailable:"Non disponibile",missing:"Entit\xE0 non trovata: {id}"},pt:{off:"DESLIGADO",on:"LIGADO",speed:"Velocidade",presets:"Modo",osc:"Oscilar",dir:"Inverter",unavailable:"Indispon\xEDvel",missing:"Entidade n\xE3o encontrada: {id}"},pl:{off:"WY\u0141.",on:"W\u0141.",speed:"Pr\u0119dko\u015B\u0107",presets:"Tryb",osc:"Oscylacja",dir:"Odwr\xF3\u0107",unavailable:"Niedost\u0119pny",missing:"Nie znaleziono encji: {id}"},ru:{off:"\u0412\u042B\u041A\u041B",on:"\u0412\u041A\u041B",speed:"\u0421\u043A\u043E\u0440\u043E\u0441\u0442\u044C",presets:"\u0420\u0435\u0436\u0438\u043C",osc:"\u041A\u0430\u0447\u0430\u043D\u0438\u0435",dir:"\u0420\u0435\u0432\u0435\u0440\u0441",unavailable:"\u041D\u0435\u0434\u043E\u0441\u0442\u0443\u043F\u043D\u043E",missing:"\u0421\u0443\u0449\u043D\u043E\u0441\u0442\u044C \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u0430: {id}"},zh:{off:"\u5173",on:"\u5F00",speed:"\u98CE\u901F",presets:"\u6A21\u5F0F",osc:"\u6446\u5934",dir:"\u53CD\u8F6C",unavailable:"\u4E0D\u53EF\u7528",missing:"\u672A\u627E\u5230\u5B9E\u4F53\uFF1A{id}"},ar:{off:"\u0625\u064A\u0642\u0627\u0641",on:"\u062A\u0634\u063A\u064A\u0644",speed:"\u0627\u0644\u0633\u0631\u0639\u0629",presets:"\u0627\u0644\u0648\u0636\u0639",osc:"\u0627\u0644\u062A\u0623\u0631\u062C\u062D",dir:"\u0639\u0643\u0633",unavailable:"\u063A\u064A\u0631 \u0645\u062A\u0648\u0641\u0631",missing:"\u0627\u0644\u0643\u064A\u0627\u0646 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F: {id}"}};function k(r,t){return r?+(4-(Math.min(100,Math.max(1,Number.isFinite(t)?t:50))-1)*(3.55/99)).toFixed(2):0}class I extends b{static getStubConfig(){return{entity:"fan.living_room"}}normalize(t){if(typeof t.entity!="string"||!t.entity.startsWith("fan."))throw new Error("entity: a fan.* entity is required");return this._drag=!1,{...t}}_st(){return this._hass&&this._hass.states[this._cfg.entity]}signature(){if(this._drag)return this._sig;const t=this._st();return t?[t.state,t.attributes.percentage,t.attributes.preset_mode,t.attributes.oscillating,t.attributes.direction,t.attributes.friendly_name].join("|")+this._theme():"-"+this._theme()}title(){const t=this._st();return this._cfg.name||t&&t.attributes.friendly_name||this._cfg.entity}tag(){const t=this._st(),e=this._lang();return t?t.state==="unavailable"?{cls:"bad",text:g(m,e,"unavailable")}:{cls:t.state==="on"?"ok":"warn",text:g(m,e,t.state==="on"?"on":"off")}:null}get css(){return`
     .stage { display:flex; justify-content:center; margin:2px 0 10px; } .stage svg { width:120px; height:120px; }
     .rotor { transform-origin:60px 60px; } .rotor.spin { animation:spin var(--p) linear infinite; } @keyframes spin { to { transform:rotate(360deg); } }
     .blade { fill:rgb(var(--sf-cyan-rgb) / .35); stroke:var(--sf-cyan); stroke-width:1.4; } .off .blade { fill:rgb(var(--sf-grey-rgb, 120 140 160) / .25); stroke:var(--sf-grey); }
@@ -135,181 +39,15 @@ class SFFanCard extends SFCard {
     .ctl { display:flex; align-items:center; gap:12px; margin:8px 0; } .ctl label { width:84px; color:var(--sf-dim); font-size:11px; letter-spacing:.1em; text-transform:uppercase; }
     input[type=range] { flex:1; accent-color:var(--sf-cyan); height:28px; } .val { width:44px; text-align:right; color:var(--sf-strong); }
     .chips { display:flex; flex-wrap:wrap; gap:6px; flex:1; } .chips button.on, button.on { background:rgb(var(--sf-cyan-rgb) / .3); border-color:var(--sf-cyan); color:var(--sf-strong); }
-    .dis { opacity:.5; pointer-events:none; }`; }
-  body() {
-    const s = this._st(), L = this._lang(), t = (k, v) => sfT(FAN_I18N, L, k, v);
-    if (!s) return `<div class="err">${sfEsc(t("missing", { id: this._cfg.entity }))}</div>`;
-    const a = s.attributes || {}, on = s.state === "on", dead = s.state === "unavailable" || s.state === "unknown", feat = Number(a.supported_features) || 0;
-    const pct = sfNum(a.percentage, on ? 100 : 0), per = fanPeriod(on, a.percentage == null ? NaN : pct), step = Math.max(1, sfNum(a.percentage_step, 1));
-    const blade = (r) => `<path class="blade" transform="rotate(${r} 60 60)" d="M60 60 C46 44 48 18 60 12 C72 18 74 44 60 60Z"/>`;
-    let h = `<div class="stage ${on ? "" : "off"} ${dead ? "dis" : ""}"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="ring" cx="60" cy="60" r="56"/><g class="rotor ${per ? "spin" : ""}" style="--p:${per || 1}s">${blade(0)}${blade(120)}${blade(240)}</g><circle class="hub" cx="60" cy="60" r="9"/></svg></div>`;
-    h += `<div class="ctl ${dead ? "dis" : ""}"><button data-act="power" class="${on ? "on" : ""}" aria-pressed="${on}">${sfEsc(t(on ? "on" : "off"))}</button>`;
-    if ((feat & 1) || a.percentage != null) h += `<input id="sl" type="range" min="0" max="100" step="${step}" value="${Math.round(pct)}" aria-label="${sfEsc(t("speed"))}"><span class="val" id="vv">${Math.round(pct)}%</span>`;
-    h += `</div>`;
-    if (Array.isArray(a.preset_modes) && a.preset_modes.length) h += `<div class="ctl ${dead ? "dis" : ""}"><label>${sfEsc(t("presets"))}</label><div class="chips">${a.preset_modes.map((m) => `<button data-act="preset" data-m="${sfEsc(m)}" class="${a.preset_mode === m ? "on" : ""}" aria-pressed="${a.preset_mode === m}">${sfEsc(m)}</button>`).join("")}</div></div>`;
-    if (feat & 2 || a.oscillating != null || (feat & 4) || a.direction) {
-      h += `<div class="ctl ${dead ? "dis" : ""}"><label></label><div class="chips">`;
-      if ((feat & 2) || a.oscillating != null) h += `<button data-act="osc" class="${a.oscillating ? "on" : ""}" aria-pressed="${!!a.oscillating}">${sfEsc(t("osc"))}</button>`;
-      if ((feat & 4) || a.direction) h += `<button data-act="dir" class="${a.direction === "reverse" ? "on" : ""}" aria-pressed="${a.direction === "reverse"}">${sfEsc(t("dir"))}</button>`;
-      h += `</div></div>`;
-    }
-    return h;
-  }
-  connectedCallback() {
-    super.connectedCallback();
-    if (this._bound) return; this._bound = true;
-    const r = this.shadowRoot;
-    r.addEventListener("pointerdown", (e) => { if (e.target.id === "sl") this._drag = true; });
-    r.addEventListener("input", (e) => { if (e.target.id === "sl") { const v = r.getElementById("vv"); if (v) v.textContent = e.target.value + "%"; } });
-    r.addEventListener("change", (e) => {
-      if (e.target.id !== "sl") return; this._drag = false;
-      const pct = Math.round(Number(e.target.value)); if (!Number.isFinite(pct)) return;
-      this._call(pct === 0 ? "turn_off" : "set_percentage", pct === 0 ? {} : { percentage: pct });
-    });
-    r.addEventListener("pointerup", () => { if (this._drag) setTimeout(() => { this._drag = false; }, 400); });   // released without a change event
-  }
-  _call(service, data) { const s = this._st(); if (!s || !this._hass) return; Promise.resolve(this._hass.callService("fan", service, { entity_id: this._cfg.entity, ...data })).catch(() => {}); }
-  onAct(el) {
-    const s = this._st(); if (!s) return; const a = s.attributes || {};
-    switch (el.dataset.act) {
-      case "power": this._call(s.state === "on" ? "turn_off" : "turn_on", {}); break;
-      case "preset": this._call("set_preset_mode", { preset_mode: el.dataset.m }); break;
-      case "osc": this._call("oscillate", { oscillating: !a.oscillating }); break;
-      case "dir": this._call("set_direction", { direction: a.direction === "reverse" ? "forward" : "reverse" }); break;
-    }
-  }
-}
-sfRegister("sf-fan-card", SFFanCard, "SF Fan", "Fan card: animated rotor, speed slider, preset modes, oscillation and direction.");
-// ---- sf-bar-card ----------------------------------------------------------------------------------------------------------------------------
-const BAR_I18N = { en: { missing: "Not found", none: "No entities configured" }, fr: { missing: "Introuvable", none: "Aucune entité configurée" }, de: { missing: "Nicht gefunden", none: "Keine Entitäten konfiguriert" }, es: { missing: "No encontrada", none: "Sin entidades configuradas" }, nl: {"missing": "Niet gevonden", "none": "Geen entiteiten ingesteld"}, it: {"missing": "Non trovata", "none": "Nessuna entità configurata"}, pt: {"missing": "Não encontrada", "none": "Nenhuma entidade configurada"}, pl: {"missing": "Nie znaleziono", "none": "Brak skonfigurowanych encji"}, ru: {"missing": "Не найдено", "none": "Сущности не настроены"}, zh: {"missing": "未找到", "none": "未配置实体"}, ar: {"missing": "غير موجود", "none": "لم يتم إعداد أي كيан"}, };
-const BAR_COLORS = { cyan: "var(--sf-cyan)", green: "var(--sf-green)", amber: "var(--sf-amber)", red: "var(--sf-red)", violet: "var(--sf-violet)", grey: "var(--sf-grey)" };
-
-// Picks the severity band for a value: the band with the highest `from` that is <= value (bands may be given in any order).
-function barColor(value, severity, fallback) {
-  let best = null;
-  for (const b of Array.isArray(severity) ? severity : []) if (b && Number.isFinite(+b.from) && value >= +b.from && (!best || +b.from > +best.from)) best = b;
-  const c = best ? best.color : fallback;
-  return BAR_COLORS[c] || (typeof c === "string" && /^(#[0-9a-f]{3,8}|rgb|hsl)/i.test(c.trim()) ? c : BAR_COLORS.cyan);
-}
-// Fraction 0..1 of the bar that is filled; min == max or garbage yields 0 (never NaN).
-function barFraction(v, min, max) { if (!Number.isFinite(v) || !Number.isFinite(min) || !Number.isFinite(max) || max <= min) return 0; return Math.min(1, Math.max(0, (v - min) / (max - min))); }
-
-class SFBarCard extends SFCard {
-  static getStubConfig() { return { entities: [{ entity: "sensor.battery_level", min: 0, max: 100, unit: "%" }] }; }
-  normalize(c) {
-    const raw = [].concat(c.entities || [], c.entity || []);
-    const rows = raw.map((r) => (typeof r === "string" ? { entity: r } : r)).filter((r) => r && typeof r.entity === "string");
-    return { ...c, rows: rows.map((r) => ({ ...c.defaults, ...r })), min: sfNum(c.min, 0), max: sfNum(c.max, 100) };
-  }
-  signature() { const st = this._hass ? this._hass.states : {}; return this._cfg.rows.map((r) => { const s = st[r.entity]; return r.entity + ":" + (s ? (r.attribute ? s.attributes[r.attribute] : s.state) : "-"); }).join("|") + this._theme(); }
-  title() { return this._cfg.title || ""; }
-  get css() { return `
+    .dis { opacity:.5; pointer-events:none; }`}body(){const t=this._st(),e=this._lang(),s=(c,$)=>g(m,e,c,$);if(!t)return`<div class="err">${a(s("missing",{id:this._cfg.entity}))}</div>`;const i=t.attributes||{},n=t.state==="on",d=t.state==="unavailable"||t.state==="unknown",o=Number(i.supported_features)||0,u=f(i.percentage,n?100:0),p=k(n,i.percentage==null?NaN:u),w=Math.max(1,f(i.percentage_step,1)),h=c=>`<path class="blade" transform="rotate(${c} 60 60)" d="M60 60 C46 44 48 18 60 12 C72 18 74 44 60 60Z"/>`;let l=`<div class="stage ${n?"":"off"} ${d?"dis":""}"><svg viewBox="0 0 120 120" aria-hidden="true"><circle class="ring" cx="60" cy="60" r="56"/><g class="rotor ${p?"spin":""}" style="--p:${p||1}s">${h(0)}${h(120)}${h(240)}</g><circle class="hub" cx="60" cy="60" r="9"/></svg></div>`;return l+=`<div class="ctl ${d?"dis":""}"><button data-act="power" class="${n?"on":""}" aria-pressed="${n}">${a(s(n?"on":"off"))}</button>`,(o&1||i.percentage!=null)&&(l+=`<input id="sl" type="range" min="0" max="100" step="${w}" value="${Math.round(u)}" aria-label="${a(s("speed"))}"><span class="val" id="vv">${Math.round(u)}%</span>`),l+="</div>",Array.isArray(i.preset_modes)&&i.preset_modes.length&&(l+=`<div class="ctl ${d?"dis":""}"><label>${a(s("presets"))}</label><div class="chips">${i.preset_modes.map(c=>`<button data-act="preset" data-m="${a(c)}" class="${i.preset_mode===c?"on":""}" aria-pressed="${i.preset_mode===c}">${a(c)}</button>`).join("")}</div></div>`),(o&2||i.oscillating!=null||o&4||i.direction)&&(l+=`<div class="ctl ${d?"dis":""}"><label></label><div class="chips">`,(o&2||i.oscillating!=null)&&(l+=`<button data-act="osc" class="${i.oscillating?"on":""}" aria-pressed="${!!i.oscillating}">${a(s("osc"))}</button>`),(o&4||i.direction)&&(l+=`<button data-act="dir" class="${i.direction==="reverse"?"on":""}" aria-pressed="${i.direction==="reverse"}">${a(s("dir"))}</button>`),l+="</div></div>"),l}connectedCallback(){if(super.connectedCallback(),this._bound)return;this._bound=!0;const t=this.shadowRoot;t.addEventListener("pointerdown",e=>{e.target.id==="sl"&&(this._drag=!0)}),t.addEventListener("input",e=>{if(e.target.id==="sl"){const s=t.getElementById("vv");s&&(s.textContent=e.target.value+"%")}}),t.addEventListener("change",e=>{if(e.target.id!=="sl")return;this._drag=!1;const s=Math.round(Number(e.target.value));Number.isFinite(s)&&this._call(s===0?"turn_off":"set_percentage",s===0?{}:{percentage:s})}),t.addEventListener("pointerup",()=>{this._drag&&setTimeout(()=>{this._drag=!1},400)})}_call(t,e){!this._st()||!this._hass||Promise.resolve(this._hass.callService("fan",t,{entity_id:this._cfg.entity,...e})).catch(()=>{})}onAct(t){const e=this._st();if(!e)return;const s=e.attributes||{};switch(t.dataset.act){case"power":this._call(e.state==="on"?"turn_off":"turn_on",{});break;case"preset":this._call("set_preset_mode",{preset_mode:t.dataset.m});break;case"osc":this._call("oscillate",{oscillating:!s.oscillating});break;case"dir":this._call("set_direction",{direction:s.direction==="reverse"?"forward":"reverse"});break}}}v("sf-fan-card",I,"SF Fan","Fan card: animated rotor, speed slider, preset modes, oscillation and direction.");const _={en:{missing:"Not found",none:"No entities configured"},fr:{missing:"Introuvable",none:"Aucune entit\xE9 configur\xE9e"},de:{missing:"Nicht gefunden",none:"Keine Entit\xE4ten konfiguriert"},es:{missing:"No encontrada",none:"Sin entidades configuradas"},nl:{missing:"Niet gevonden",none:"Geen entiteiten ingesteld"},it:{missing:"Non trovata",none:"Nessuna entit\xE0 configurata"},pt:{missing:"N\xE3o encontrada",none:"Nenhuma entidade configurada"},pl:{missing:"Nie znaleziono",none:"Brak skonfigurowanych encji"},ru:{missing:"\u041D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u043E",none:"\u0421\u0443\u0449\u043D\u043E\u0441\u0442\u0438 \u043D\u0435 \u043D\u0430\u0441\u0442\u0440\u043E\u0435\u043D\u044B"},zh:{missing:"\u672A\u627E\u5230",none:"\u672A\u914D\u7F6E\u5B9E\u4F53"},ar:{missing:"\u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F",none:"\u0644\u0645 \u064A\u062A\u0645 \u0625\u0639\u062F\u0627\u062F \u0623\u064A \u0643\u064A\u0430\u043D"}},N={cyan:"var(--sf-cyan)",green:"var(--sf-green)",amber:"var(--sf-amber)",red:"var(--sf-red)",violet:"var(--sf-violet)",grey:"var(--sf-grey)"};function E(r,t,e){let s=null;for(const n of Array.isArray(t)?t:[])n&&Number.isFinite(+n.from)&&r>=+n.from&&(!s||+n.from>+s.from)&&(s=n);const i=s?s.color:e;return N[i]||(typeof i=="string"&&/^(#[0-9a-f]{3,8}|rgb|hsl)/i.test(i.trim())?i:N.cyan)}function y(r,t,e){return!Number.isFinite(r)||!Number.isFinite(t)||!Number.isFinite(e)||e<=t?0:Math.min(1,Math.max(0,(r-t)/(e-t)))}class L extends b{static getStubConfig(){return{entities:[{entity:"sensor.battery_level",min:0,max:100,unit:"%"}]}}normalize(t){const s=[].concat(t.entities||[],t.entity||[]).map(i=>typeof i=="string"?{entity:i}:i).filter(i=>i&&typeof i.entity=="string");return{...t,rows:s.map(i=>({...t.defaults,...i})),min:f(t.min,0),max:f(t.max,100)}}signature(){const t=this._hass?this._hass.states:{};return this._cfg.rows.map(e=>{const s=t[e.entity];return e.entity+":"+(s?e.attribute?s.attributes[e.attribute]:s.state:"-")}).join("|")+this._theme()}title(){return this._cfg.title||""}get css(){return`
     .row { padding:7px 4px; } .top { display:flex; justify-content:space-between; gap:10px; margin-bottom:5px; } .nm { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--sf-strong); }
     .v { color:var(--sf-text); white-space:nowrap; } .v small { color:var(--sf-dim); } .track { position:relative; height:10px; border-radius:6px; background:rgb(var(--sf-cyan-rgb) / .1); border:1px solid rgb(var(--sf-cyan-rgb) / .2); overflow:hidden; }
     .fill { position:absolute; inset:0 auto 0 0; border-radius:6px; background:var(--col); box-shadow:0 0 10px var(--col); transition:width .5s ease; opacity:.92; }
-    .tick { position:absolute; top:-2px; bottom:-2px; width:2px; background:var(--sf-strong); opacity:.8; } .na { color:var(--sf-grey); }`; }
-  body() {
-    const L = this._lang(), st = this._hass ? this._hass.states : {}, c = this._cfg;
-    if (!c.rows.length) return `<div class="empty">${sfEsc(sfT(BAR_I18N, L, "none"))}</div>`;
-    return c.rows.map((r) => {
-      const s = st[r.entity], raw = s ? (r.attribute ? s.attributes[r.attribute] : s.state) : undefined, v = sfNum(raw);
-      const min = sfNum(r.min, c.min), max = sfNum(r.max, c.max), dec = Math.max(0, Math.min(6, Math.round(sfNum(r.decimals, Math.abs(v) < 10 ? 1 : 0))));
-      const name = r.name || (s && s.attributes.friendly_name) || r.entity, unit = r.unit != null ? r.unit : (s && s.attributes.unit_of_measurement) || "";
-      const frac = barFraction(v, min, max), col = barColor(v, r.severity || c.severity, r.color || c.color || "cyan");
-      const tgt = sfNum(r.target, NaN), tf = Number.isFinite(tgt) ? barFraction(tgt, min, max) : null;
-      const val = Number.isFinite(v) ? `${v.toFixed(dec)}<small> ${sfEsc(unit)}</small>` : `<span class="na">${sfEsc(s ? (raw == null ? "–" : raw) : sfT(BAR_I18N, L, "missing"))}</span>`;
-      return `<div class="row" data-act="info" data-id="${sfEsc(r.entity)}" role="button" tabindex="0"><div class="top"><span class="nm">${sfEsc(name)}</span><span class="v">${val}</span></div>`
-        + `<div class="track" role="progressbar" aria-valuemin="${min}" aria-valuemax="${max}" aria-valuenow="${Number.isFinite(v) ? v : 0}"><div class="fill" style="width:${(frac * 100).toFixed(1)}%;--col:${col}"></div>${tf != null ? `<i class="tick" style="left:${(tf * 100).toFixed(1)}%"></i>` : ""}</div></div>`;
-    }).join("");
-  }
-  onAct(el) { if (el.dataset.act === "info") sfMoreInfo(this, el.dataset.id); }
-}
-sfRegister("sf-bar-card", SFBarCard, "SF Bar", "Horizontal bar gauges for one or more entities, with severity colours and an optional target marker.");
-// ---- sf-todo-card ---------------------------------------------------------------------------------------------------------------------------
-const TODO_I18N = {
-  en: { title: "To-do", add: "Add an item…", addBtn: "Add", done: "Completed", clear: "Clear completed", empty: "Nothing to do", err: "Could not read the list", missing: "Entity not found: {id}" },
-  fr: { title: "À faire", add: "Ajouter un élément…", addBtn: "Ajouter", done: "Terminés", clear: "Effacer les terminés", empty: "Rien à faire", err: "Liste illisible", missing: "Entité introuvable : {id}" },
-  de: { title: "Aufgaben", add: "Eintrag hinzufügen…", addBtn: "Hinzufügen", done: "Erledigt", clear: "Erledigte löschen", empty: "Nichts zu tun", err: "Liste nicht lesbar", missing: "Entität nicht gefunden: {id}" },
-  es: { title: "Tareas", add: "Añadir elemento…", addBtn: "Añadir", done: "Completadas", clear: "Borrar completadas", empty: "Nada que hacer", err: "No se puede leer la lista", missing: "Entidad no encontrada: {id}" },
- nl: {"title": "Taken", "add": "Item toevoegen…", "addBtn": "Toevoegen", "done": "Voltooid", "clear": "Voltooide wissen", "empty": "Niets te doen", "err": "Lijst niet leesbaar", "missing": "Entiteit niet gevonden: {id}"},
- it: {"title": "Da fare", "add": "Aggiungi elemento…", "addBtn": "Aggiungi", "done": "Completati", "clear": "Cancella completati", "empty": "Niente da fare", "err": "Elenco illeggibile", "missing": "Entità non trovata: {id}"},
- pt: {"title": "Tarefas", "add": "Adicionar item…", "addBtn": "Adicionar", "done": "Concluídas", "clear": "Limpar concluídas", "empty": "Nada a fazer", "err": "Lista ilegível", "missing": "Entidade não encontrada: {id}"},
- pl: {"title": "Do zrobienia", "add": "Dodaj pozycję…", "addBtn": "Dodaj", "done": "Ukończone", "clear": "Wyczyść ukończone", "empty": "Nic do zrobienia", "err": "Nie można odczytać listy", "missing": "Nie znaleziono encji: {id}"},
- ru: {"title": "Задачи", "add": "Добавить пункт…", "addBtn": "Добавить", "done": "Выполнено", "clear": "Очистить выполненные", "empty": "Нечего делать", "err": "Не удалось прочитать список", "missing": "Сущность не найдена: {id}"},
- zh: {"title": "待办", "add": "添加项目…", "addBtn": "添加", "done": "已完成", "clear": "清除已完成", "empty": "无待办事项", "err": "无法读取列表", "missing": "未找到实体：{id}"},
- ar: {"title": "المهام", "add": "إضافة عنصر…", "addBtn": "إضافة", "done": "مكتملة", "clear": "مسح المكتملة", "empty": "لا شيء للقيام به", "err": "تعذّرت قراءة القائمة", "missing": "الكيان غير موجود: {id}"},
-};
-const TODO_MIN_INTERVAL = 3000;
-
-// Normalises what todo.get_items returns for one entity into [{uid, summary, done, due}] (junk entries dropped).
-function todoItems(resp, entityId) {
-  const list = resp && resp.response && resp.response[entityId] && resp.response[entityId].items;
-  return (Array.isArray(list) ? list : []).filter((i) => i && typeof i.summary === "string").map((i) => ({ uid: i.uid || i.summary, summary: i.summary, done: i.status === "completed", due: i.due || "" }));
-}
-
-class SFTodoCard extends SFCard {
-  static getStubConfig() { return { entity: "todo.shopping_list" }; }
-  normalize(c) {
-    if (typeof c.entity !== "string" || !c.entity.startsWith("todo.")) throw new Error("entity: a todo.* entity is required");
-    this._items = []; this._error = false; this._inflight = false; this._dirty = true; this._last = 0; this._showDone = false; return { ...c };
-  }
-  signature() { const s = this._hass && this._hass.states[this._cfg.entity], v = s ? s.state + ":" + (s.last_updated || "") : "-"; if (v !== this._tdSig) { this._tdSig = v; this._dirty = true; } return v + this._theme(); }
-  title() { return this._cfg.title || (this._st() && this._st().attributes.friendly_name) || sfT(TODO_I18N, this._lang(), "title"); }
-  _st() { return this._hass && this._hass.states[this._cfg.entity]; }
-  tag() { const s = this._st(); return s && /^\d+$/.test(s.state) ? { cls: +s.state ? "warn" : "ok", text: s.state } : null; }
-  get tick() { return 30000; }
-  _draw() { this._fetch(); super._draw(); }
-  _fetch(force) {
-    if (!this._cfg || !this._hass || this._inflight || !this._st()) return;
-    if (!force && (!this._dirty || Date.now() - this._last < TODO_MIN_INTERVAL)) return;
-    this._inflight = true; this._dirty = false; this._last = Date.now();
-    Promise.resolve().then(() => this._hass.callWS({ type: "call_service", domain: "todo", service: "get_items", target: { entity_id: this._cfg.entity }, service_data: { status: ["needs_action", "completed"] }, return_response: true }))
-      .then((r) => { this._items = todoItems(r, this._cfg.entity); this._error = false; })
-      .catch(() => { this._error = true; })
-      .finally(() => { this._inflight = false; super._draw(); });
-  }
-  get css() { return `
+    .tick { position:absolute; top:-2px; bottom:-2px; width:2px; background:var(--sf-strong); opacity:.8; } .na { color:var(--sf-grey); }`}body(){const t=this._lang(),e=this._hass?this._hass.states:{},s=this._cfg;return s.rows.length?s.rows.map(i=>{const n=e[i.entity],d=n?i.attribute?n.attributes[i.attribute]:n.state:void 0,o=f(d),u=f(i.min,s.min),p=f(i.max,s.max),w=Math.max(0,Math.min(6,Math.round(f(i.decimals,Math.abs(o)<10?1:0)))),h=i.name||n&&n.attributes.friendly_name||i.entity,l=i.unit!=null?i.unit:n&&n.attributes.unit_of_measurement||"",c=y(o,u,p),$=E(o,i.severity||s.severity,i.color||s.color||"cyan"),S=f(i.target,NaN),C=Number.isFinite(S)?y(S,u,p):null,D=Number.isFinite(o)?`${o.toFixed(w)}<small> ${a(l)}</small>`:`<span class="na">${a(n?d??"\u2013":g(_,t,"missing"))}</span>`;return`<div class="row" data-act="info" data-id="${a(i.entity)}" role="button" tabindex="0"><div class="top"><span class="nm">${a(h)}</span><span class="v">${D}</span></div><div class="track" role="progressbar" aria-valuemin="${u}" aria-valuemax="${p}" aria-valuenow="${Number.isFinite(o)?o:0}"><div class="fill" style="width:${(c*100).toFixed(1)}%;--col:${$}"></div>${C!=null?`<i class="tick" style="left:${(C*100).toFixed(1)}%"></i>`:""}</div></div>`}).join(""):`<div class="empty">${a(g(_,t,"none"))}</div>`}onAct(t){t.dataset.act==="info"&&M(this,t.dataset.id)}}v("sf-bar-card",L,"SF Bar","Horizontal bar gauges for one or more entities, with severity colours and an optional target marker.");const x={en:{title:"To-do",add:"Add an item\u2026",addBtn:"Add",done:"Completed",clear:"Clear completed",empty:"Nothing to do",err:"Could not read the list",missing:"Entity not found: {id}"},fr:{title:"\xC0 faire",add:"Ajouter un \xE9l\xE9ment\u2026",addBtn:"Ajouter",done:"Termin\xE9s",clear:"Effacer les termin\xE9s",empty:"Rien \xE0 faire",err:"Liste illisible",missing:"Entit\xE9 introuvable : {id}"},de:{title:"Aufgaben",add:"Eintrag hinzuf\xFCgen\u2026",addBtn:"Hinzuf\xFCgen",done:"Erledigt",clear:"Erledigte l\xF6schen",empty:"Nichts zu tun",err:"Liste nicht lesbar",missing:"Entit\xE4t nicht gefunden: {id}"},es:{title:"Tareas",add:"A\xF1adir elemento\u2026",addBtn:"A\xF1adir",done:"Completadas",clear:"Borrar completadas",empty:"Nada que hacer",err:"No se puede leer la lista",missing:"Entidad no encontrada: {id}"},nl:{title:"Taken",add:"Item toevoegen\u2026",addBtn:"Toevoegen",done:"Voltooid",clear:"Voltooide wissen",empty:"Niets te doen",err:"Lijst niet leesbaar",missing:"Entiteit niet gevonden: {id}"},it:{title:"Da fare",add:"Aggiungi elemento\u2026",addBtn:"Aggiungi",done:"Completati",clear:"Cancella completati",empty:"Niente da fare",err:"Elenco illeggibile",missing:"Entit\xE0 non trovata: {id}"},pt:{title:"Tarefas",add:"Adicionar item\u2026",addBtn:"Adicionar",done:"Conclu\xEDdas",clear:"Limpar conclu\xEDdas",empty:"Nada a fazer",err:"Lista ileg\xEDvel",missing:"Entidade n\xE3o encontrada: {id}"},pl:{title:"Do zrobienia",add:"Dodaj pozycj\u0119\u2026",addBtn:"Dodaj",done:"Uko\u0144czone",clear:"Wyczy\u015B\u0107 uko\u0144czone",empty:"Nic do zrobienia",err:"Nie mo\u017Cna odczyta\u0107 listy",missing:"Nie znaleziono encji: {id}"},ru:{title:"\u0417\u0430\u0434\u0430\u0447\u0438",add:"\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C \u043F\u0443\u043D\u043A\u0442\u2026",addBtn:"\u0414\u043E\u0431\u0430\u0432\u0438\u0442\u044C",done:"\u0412\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u043E",clear:"\u041E\u0447\u0438\u0441\u0442\u0438\u0442\u044C \u0432\u044B\u043F\u043E\u043B\u043D\u0435\u043D\u043D\u044B\u0435",empty:"\u041D\u0435\u0447\u0435\u0433\u043E \u0434\u0435\u043B\u0430\u0442\u044C",err:"\u041D\u0435 \u0443\u0434\u0430\u043B\u043E\u0441\u044C \u043F\u0440\u043E\u0447\u0438\u0442\u0430\u0442\u044C \u0441\u043F\u0438\u0441\u043E\u043A",missing:"\u0421\u0443\u0449\u043D\u043E\u0441\u0442\u044C \u043D\u0435 \u043D\u0430\u0439\u0434\u0435\u043D\u0430: {id}"},zh:{title:"\u5F85\u529E",add:"\u6DFB\u52A0\u9879\u76EE\u2026",addBtn:"\u6DFB\u52A0",done:"\u5DF2\u5B8C\u6210",clear:"\u6E05\u9664\u5DF2\u5B8C\u6210",empty:"\u65E0\u5F85\u529E\u4E8B\u9879",err:"\u65E0\u6CD5\u8BFB\u53D6\u5217\u8868",missing:"\u672A\u627E\u5230\u5B9E\u4F53\uFF1A{id}"},ar:{title:"\u0627\u0644\u0645\u0647\u0627\u0645",add:"\u0625\u0636\u0627\u0641\u0629 \u0639\u0646\u0635\u0631\u2026",addBtn:"\u0625\u0636\u0627\u0641\u0629",done:"\u0645\u0643\u062A\u0645\u0644\u0629",clear:"\u0645\u0633\u062D \u0627\u0644\u0645\u0643\u062A\u0645\u0644\u0629",empty:"\u0644\u0627 \u0634\u064A\u0621 \u0644\u0644\u0642\u064A\u0627\u0645 \u0628\u0647",err:"\u062A\u0639\u0630\u0651\u0631\u062A \u0642\u0631\u0627\u0621\u0629 \u0627\u0644\u0642\u0627\u0626\u0645\u0629",missing:"\u0627\u0644\u0643\u064A\u0627\u0646 \u063A\u064A\u0631 \u0645\u0648\u062C\u0648\u062F: {id}"}},O=3e3;function A(r,t){const e=r&&r.response&&r.response[t]&&r.response[t].items;return(Array.isArray(e)?e:[]).filter(s=>s&&typeof s.summary=="string").map(s=>({uid:s.uid||s.summary,summary:s.summary,done:s.status==="completed",due:s.due||""}))}class B extends b{static getStubConfig(){return{entity:"todo.shopping_list"}}normalize(t){if(typeof t.entity!="string"||!t.entity.startsWith("todo."))throw new Error("entity: a todo.* entity is required");return this._items=[],this._error=!1,this._inflight=!1,this._dirty=!0,this._last=0,this._showDone=!1,{...t}}signature(){const t=this._hass&&this._hass.states[this._cfg.entity],e=t?t.state+":"+(t.last_updated||""):"-";return e!==this._tdSig&&(this._tdSig=e,this._dirty=!0),e+this._theme()}title(){return this._cfg.title||this._st()&&this._st().attributes.friendly_name||g(x,this._lang(),"title")}_st(){return this._hass&&this._hass.states[this._cfg.entity]}tag(){const t=this._st();return t&&/^\d+$/.test(t.state)?{cls:+t.state?"warn":"ok",text:t.state}:null}get tick(){return 3e4}_draw(){this._fetch(),super._draw()}_fetch(t){!this._cfg||!this._hass||this._inflight||!this._st()||!t&&(!this._dirty||Date.now()-this._last<O)||(this._inflight=!0,this._dirty=!1,this._last=Date.now(),Promise.resolve().then(()=>this._hass.callWS({type:"call_service",domain:"todo",service:"get_items",target:{entity_id:this._cfg.entity},service_data:{status:["needs_action","completed"]},return_response:!0})).then(e=>{this._items=A(e,this._cfg.entity),this._error=!1}).catch(()=>{this._error=!0}).finally(()=>{this._inflight=!1,super._draw()}))}get css(){return`
     .add { display:flex; gap:8px; margin-bottom:10px; } .add input { flex:1; min-width:0; font:inherit; color:var(--sf-strong); background:rgb(var(--sf-cyan-rgb) / .07); border:1px solid rgb(var(--sf-cyan-rgb) / .3); border-radius:8px; padding:7px 10px; }
     .it { display:flex; align-items:center; gap:10px; padding:7px 4px; border-top:1px solid rgb(var(--sf-cyan-rgb) / .12); } .it:first-of-type { border-top:0; }
     .bx { width:20px; height:20px; flex:none; border-radius:6px; border:2px solid var(--sf-cyan); display:grid; place-items:center; background:none; padding:0; min-height:0; }
     .it.d .bx { background:var(--sf-green); border-color:var(--sf-green); color:var(--sf-on-accent); } .it.d .tx { text-decoration:line-through; color:var(--sf-dim); }
     .tx { flex:1; min-width:0; overflow-wrap:anywhere; color:var(--sf-strong); } .due { color:var(--sf-amber); font-size:11px; }
     .sec { margin:12px 0 4px; display:flex; justify-content:space-between; align-items:center; font-family:Orbitron, ui-sans-serif, sans-serif; font-size:10px; letter-spacing:.2em; text-transform:uppercase; color:var(--sf-dim); }
-    .sec button { font-size:10px; padding:2px 8px; }`; }
-  body() {
-    const L = this._lang(), t = (k, v) => sfT(TODO_I18N, L, k, v);
-    if (!this._st()) return `<div class="err">${sfEsc(t("missing", { id: this._cfg.entity }))}</div>`;
-    const todo = this._items.filter((i) => !i.done), done = this._items.filter((i) => i.done);
-    const item = (i) => `<div class="it ${i.done ? "d" : ""}"><button class="bx" data-act="tgl" data-u="${sfEsc(i.uid)}" data-d="${i.done ? 1 : 0}" role="checkbox" aria-checked="${i.done}" aria-label="${sfEsc(i.summary)}">${i.done ? "✓" : ""}</button><span class="tx">${sfEsc(i.summary)}</span>${i.due ? `<span class="due">${sfEsc(String(i.due).slice(0, 10))}</span>` : ""}</div>`;
-    let h = `<form class="add" data-form="1"><input id="ni" type="text" maxlength="255" placeholder="${sfEsc(t("add"))}" aria-label="${sfEsc(t("add"))}" autocomplete="off"><button type="submit">${sfEsc(t("addBtn"))}</button></form>`;
-    if (this._error) h += `<div class="err">${sfEsc(t("err"))}</div>`;
-    h += todo.length ? todo.map(item).join("") : (this._error ? "" : `<div class="empty">${sfEsc(t("empty"))}</div>`);
-    if (done.length) {
-      h += `<div class="sec"><span data-act="showdone" role="button" tabindex="0">${this._showDone ? "▾" : "▸"} ${sfEsc(t("done"))} (${done.length})</span>${this._showDone ? `<button data-act="clear">${sfEsc(t("clear"))}</button>` : ""}</div>`;
-      if (this._showDone) h += done.map(item).join("");
-    }
-    return h;
-  }
-  connectedCallback() {
-    super.connectedCallback();
-    if (this._bound) return; this._bound = true;
-    this.shadowRoot.addEventListener("submit", (e) => {
-      e.preventDefault(); const inp = this.shadowRoot.getElementById("ni"), v = inp && inp.value.trim(); if (!v) return;
-      inp.value = ""; this._svc("add_item", { item: v });
-    });
-  }
-  _svc(service, data) {
-    if (!this._hass) return Promise.resolve();
-    return Promise.resolve(this._hass.callService("todo", service, { entity_id: this._cfg.entity, ...data })).catch(() => { this._error = true; }).finally(() => { this._dirty = true; this._last = 0; this._fetch(true); });
-  }
-  onAct(el) {
-    const a = el.dataset.act;
-    if (a === "tgl") { const it = this._items.find((i) => String(i.uid) === el.dataset.u); if (it) { it.done = !it.done; super._draw(); this._svc("update_item", { item: it.uid, status: it.done ? "completed" : "needs_action" }); } }
-    else if (a === "showdone") { this._showDone = !this._showDone; super._draw(); }
-    else if (a === "clear") this._svc("remove_completed_items", {});
-  }
-}
-sfRegister("sf-todo-card", SFTodoCard, "SF To-do", "To-do / shopping list card: add, check off and clear items.");
-window.__sfControls = { i18n: { fan: FAN_I18N, bar: BAR_I18N, todo: TODO_I18N }, fanPeriod, barColor, barFraction, todoItems };   // exposed for the test page only
-
-})();
+    .sec button { font-size:10px; padding:2px 8px; }`}body(){const t=this._lang(),e=(o,u)=>g(x,t,o,u);if(!this._st())return`<div class="err">${a(e("missing",{id:this._cfg.entity}))}</div>`;const s=this._items.filter(o=>!o.done),i=this._items.filter(o=>o.done),n=o=>`<div class="it ${o.done?"d":""}"><button class="bx" data-act="tgl" data-u="${a(o.uid)}" data-d="${o.done?1:0}" role="checkbox" aria-checked="${o.done}" aria-label="${a(o.summary)}">${o.done?"\u2713":""}</button><span class="tx">${a(o.summary)}</span>${o.due?`<span class="due">${a(String(o.due).slice(0,10))}</span>`:""}</div>`;let d=`<form class="add" data-form="1"><input id="ni" type="text" maxlength="255" placeholder="${a(e("add"))}" aria-label="${a(e("add"))}" autocomplete="off"><button type="submit">${a(e("addBtn"))}</button></form>`;return this._error&&(d+=`<div class="err">${a(e("err"))}</div>`),d+=s.length?s.map(n).join(""):this._error?"":`<div class="empty">${a(e("empty"))}</div>`,i.length&&(d+=`<div class="sec"><span data-act="showdone" role="button" tabindex="0">${this._showDone?"\u25BE":"\u25B8"} ${a(e("done"))} (${i.length})</span>${this._showDone?`<button data-act="clear">${a(e("clear"))}</button>`:""}</div>`,this._showDone&&(d+=i.map(n).join(""))),d}connectedCallback(){super.connectedCallback(),!this._bound&&(this._bound=!0,this.shadowRoot.addEventListener("submit",t=>{t.preventDefault();const e=this.shadowRoot.getElementById("ni"),s=e&&e.value.trim();s&&(e.value="",this._svc("add_item",{item:s}))}))}_svc(t,e){return this._hass?Promise.resolve(this._hass.callService("todo",t,{entity_id:this._cfg.entity,...e})).catch(()=>{this._error=!0}).finally(()=>{this._dirty=!0,this._last=0,this._fetch(!0)}):Promise.resolve()}onAct(t){const e=t.dataset.act;if(e==="tgl"){const s=this._items.find(i=>String(i.uid)===t.dataset.u);s&&(s.done=!s.done,super._draw(),this._svc("update_item",{item:s.uid,status:s.done?"completed":"needs_action"}))}else e==="showdone"?(this._showDone=!this._showDone,super._draw()):e==="clear"&&this._svc("remove_completed_items",{})}}v("sf-todo-card",B,"SF To-do","To-do / shopping list card: add, check off and clear items."),window.__sfControls={i18n:{fan:m,bar:_,todo:x},fanPeriod:k,barColor:E,barFraction:y,todoItems:A}})();

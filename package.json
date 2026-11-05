@@ -1,0 +1,12 @@
+{
+  "name": "sf-controls",
+  "private": true,
+  "description": "Build tooling for SF-Controls (no runtime dependency: HACS loads dist/ directly, no bundler).",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "build:check": "node scripts/build.mjs --check"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}
