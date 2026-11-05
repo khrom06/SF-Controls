@@ -3,6 +3,7 @@
 **The three cards Home Assistant users keep asking for** — a proper **fan** card, a **bar gauge** card and a **to-do** card — in the HUD style of [SF Cards](https://github.com/khrom06/SF-Cards).
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
+[![Live demo](https://img.shields.io/badge/live-demo-00e5ff)](https://khrom06.github.io/SF-Controls/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Add to HACS](https://img.shields.io/badge/HACS-add%20this%20repository-00e5ff)](https://my.home-assistant.io/redirect/hacs_repository/?owner=khrom06&repository=SF-Controls&category=dashboard)
 
