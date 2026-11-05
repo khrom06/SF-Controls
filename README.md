@@ -11,8 +11,10 @@
 
 ## Install
 
-1. HACS → ⋮ → *Custom repositories* → add `https://github.com/khrom06/SF-Controls`, category **Dashboard**; install.
+1. HACS → search for **SF Controls** → *Download*.
 2. Reload the browser (HACS registers the resource for you).
+
+Not listed yet in your HACS? Add it manually: HACS → ⋮ → *Custom repositories* → `https://github.com/khrom06/SF-Controls`, category **Dashboard**, then install.
 
 All cards: light/dark theme (`theme: auto | dark | light`), languages en, fr, es, de, nl, it, pt, pl, ru, zh, ar (RTL for Arabic; `language: xx` forces one), keyboard accessible, no dependencies.
 
