@@ -5,7 +5,7 @@
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz)
 [![Live demo](https://img.shields.io/badge/live-demo-00e5ff)](https://khrom06.github.io/SF-Controls/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Add to HACS](https://img.shields.io/badge/HACS-add%20this%20repository-00e5ff)](https://my.home-assistant.io/redirect/hacs_repository/?owner=khrom06&repository=SF-Controls&category=dashboard)
+[![Add to HACS](https://img.shields.io/badge/HACS-open%20in%20HACS-00e5ff)](https://my.home-assistant.io/redirect/hacs_repository/?owner=khrom06&repository=SF-Controls&category=dashboard)
 
 <p align="center"><img src="assets/controls.png" alt="SF Controls: fan, bar and to-do cards, dark and light" width="780"></p>
 
@@ -14,7 +14,11 @@
 1. HACS → search for **SF Controls** → *Download*.
 2. Reload the browser (HACS registers the resource for you).
 
-Not listed yet in your HACS? Add it manually: HACS → ⋮ → *Custom repositories* → `https://github.com/khrom06/SF-Controls`, category **Dashboard**, then install.
+<details><summary>Cannot find it in HACS (older version, or not in your catalogue yet)? Add it as a custom repository</summary>
+
+HACS → ⋮ → *Custom repositories* → `https://github.com/khrom06/SF-Controls`, category **Dashboard**, then search for it and download as above.
+
+</details>
 
 All cards: light/dark theme (`theme: auto | dark | light`), languages en, fr, es, de, nl, it, pt, pl, ru, zh, ar (RTL for Arabic; `language: xx` forces one), keyboard accessible, no dependencies.
 
