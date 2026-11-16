@@ -2,12 +2,14 @@
 const BAR_I18N = { en: { missing: "Not found", none: "No entities configured" }, fr: { missing: "Introuvable", none: "Aucune entité configurée" }, de: { missing: "Nicht gefunden", none: "Keine Entitäten konfiguriert" }, es: { missing: "No encontrada", none: "Sin entidades configuradas" }, nl: {"missing": "Niet gevonden", "none": "Geen entiteiten ingesteld"}, it: {"missing": "Non trovata", "none": "Nessuna entità configurata"}, pt: {"missing": "Não encontrada", "none": "Nenhuma entidade configurada"}, pl: {"missing": "Nie znaleziono", "none": "Brak skonfigurowanych encji"}, ru: {"missing": "Не найдено", "none": "Сущности не настроены"}, zh: {"missing": "未找到", "none": "未配置实体"}, ar: {"missing": "غير موجود", "none": "لم يتم إعداد أي كيан"}, };
 const BAR_COLORS = { cyan: "var(--sf-cyan)", green: "var(--sf-green)", amber: "var(--sf-amber)", red: "var(--sf-red)", violet: "var(--sf-violet)", grey: "var(--sf-grey)" };
 
+// A colour given in the configuration: the WHOLE value must be a hex colour or an rgb() / hsl() function (no quote, semicolon or anything else can follow).
+const BAR_COLOR_OK = /^(#[0-9a-f]{3,8}|rgba?\([\d\s,.%\/]+\)|hsla?\([\d\s,.%\/a-z]+\))$/i;
 // Picks the severity band for a value: the band with the highest `from` that is <= value (bands may be given in any order).
 function barColor(value, severity, fallback) {
   let best = null;
   for (const b of Array.isArray(severity) ? severity : []) if (b && Number.isFinite(+b.from) && value >= +b.from && (!best || +b.from > +best.from)) best = b;
   const c = best ? best.color : fallback;
-  return BAR_COLORS[c] || (typeof c === "string" && /^(#[0-9a-f]{3,8}|rgb|hsl)/i.test(c.trim()) ? c : BAR_COLORS.cyan);
+  return BAR_COLORS[c] || (typeof c === "string" && BAR_COLOR_OK.test(c.trim()) ? c.trim() : BAR_COLORS.cyan);
 }
 // Fraction 0..1 of the bar that is filled; min == max or garbage yields 0 (never NaN).
 function barFraction(v, min, max) { if (!Number.isFinite(v) || !Number.isFinite(min) || !Number.isFinite(max) || max <= min) return 0; return Math.min(1, Math.max(0, (v - min) / (max - min))); }
@@ -37,7 +39,7 @@ class SFBarCard extends SFCard {
       const tgt = sfNum(r.target, NaN), tf = Number.isFinite(tgt) ? barFraction(tgt, min, max) : null;
       const val = Number.isFinite(v) ? `${v.toFixed(dec)}<small> ${sfEsc(unit)}</small>` : `<span class="na">${sfEsc(s ? (raw == null ? "–" : raw) : sfT(BAR_I18N, L, "missing"))}</span>`;
       return `<div class="row" data-act="info" data-id="${sfEsc(r.entity)}" role="button" tabindex="0"><div class="top"><span class="nm">${sfEsc(name)}</span><span class="v">${val}</span></div>`
-        + `<div class="track" role="progressbar" aria-valuemin="${min}" aria-valuemax="${max}" aria-valuenow="${Number.isFinite(v) ? v : 0}"><div class="fill" style="width:${(frac * 100).toFixed(1)}%;--col:${col}"></div>${tf != null ? `<i class="tick" style="left:${(tf * 100).toFixed(1)}%"></i>` : ""}</div></div>`;
+        + `<div class="track" role="progressbar" aria-valuemin="${min}" aria-valuemax="${max}" aria-valuenow="${Number.isFinite(v) ? v : 0}"><div class="fill" style="width:${(frac * 100).toFixed(1)}%;--col:${sfEsc(col)}"></div>${tf != null ? `<i class="tick" style="left:${(tf * 100).toFixed(1)}%"></i>` : ""}</div></div>`;
     }).join("");
   }
   onAct(el) { if (el.dataset.act === "info") sfMoreInfo(this, el.dataset.id); }

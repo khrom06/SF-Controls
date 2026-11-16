@@ -12,6 +12,11 @@
   eq([X.barColor(10, sev, "cyan"), X.barColor(75, sev, "cyan"), X.barColor(95, sev, "cyan")], ["var(--sf-green)", "var(--sf-amber)", "var(--sf-red)"], "severity bands (any order)");
   eq(X.barColor(5, [], "cyan"), "var(--sf-cyan)", "no bands -> fallback"); eq(X.barColor(5, [{ from: 0, color: "#ff8800" }], "cyan"), "#ff8800", "hex colour accepted");
   eq(X.barColor(5, [{ from: 0, color: "red; background:url(x)" }], "cyan"), "var(--sf-cyan)", "CSS injection through colour rejected");
+  // The whole value must be a colour: a valid prefix followed by a quote / attribute / function call must be rejected (review by the HACS maintainers)
+  for (const bad of ['#fff" onmouseover="window.__x=1', "#fff' onmouseover='x", "#fff;background:url(//x)", 'rgb(0,0,0)" onfocus="x', "rgb(0,0,0);x", 'hsl(1,2%,3%)"><img src=x>', "#fffffffff", "hsl(1 2% 3%) url(x)", " #fff\n\" x=\"", "rgbx", "var(--x)"])
+    eq(X.barColor(5, [{ from: 0, color: bad }], "cyan"), "var(--sf-cyan)", "colour rejected: " + JSON.stringify(bad));
+  eq([X.barColor(5, [{ from: 0, color: "#fff" }], "cyan"), X.barColor(5, [{ from: 0, color: " #FF8800 " }], "cyan"), X.barColor(5, [{ from: 0, color: "rgb(255, 136, 0)" }], "cyan"), X.barColor(5, [{ from: 0, color: "rgba(255,136,0,.5)" }], "cyan"), X.barColor(5, [{ from: 0, color: "hsl(30 100% 50%)" }], "cyan"), X.barColor(5, [{ from: 0, color: "hsla(30deg, 100%, 50%, 0.5)" }], "cyan")],
+    ["#fff", "#FF8800", "rgb(255, 136, 0)", "rgba(255,136,0,.5)", "hsl(30 100% 50%)", "hsla(30deg, 100%, 50%, 0.5)"], "legitimate colours still accepted");
   eq([X.barFraction(50, 0, 100), X.barFraction(-5, 0, 100), X.barFraction(500, 0, 100), X.barFraction(1, 5, 5), X.barFraction(NaN, 0, 1)], [0.5, 0, 1, 0, 0], "fraction clamps, never NaN");
   eq(X.todoItems({ response: { "todo.a": { items: [{ uid: "1", summary: "Milk", status: "needs_action" }, { summary: "Eggs", status: "completed" }, { uid: "x" }, null] } } }, "todo.a").map((i) => i.uid + i.done), ["1false", "Eggstrue"], "todo items normalised, junk dropped");
   eq(X.todoItems(null, "todo.a"), [], "todo items: null response");
@@ -44,6 +49,8 @@
   check(text(el).includes("Not found") && text(el).includes("unavailable"), "missing and unavailable shown as text"); check(text(el).includes("42.50 L"), "attribute + decimals + custom unit: " + text(el));
   check(!el.shadowRoot.querySelector("i:not(.tick):not(.c)"), "names escaped"); check(!text(el).includes("NaN"), "no NaN");
   let got; el.addEventListener("hass-more-info", (e) => { got = e.detail.entityId; }); q(el, ".row")[0].click(); eq(got, "sensor.t", "row opens more-info");
+  window.__x = 0; el = mount("sf-bar-card", { entities: [{ entity: "sensor.t", color: '#fff" onmouseover="window.__x=1" data-x="', severity: [{ from: 0, color: '#fff"><img src=x onerror="window.__x=2">' }] }, { entity: "sensor.t", color: "red;background:url(//x)" }] }, hass([state("sensor.t", 50)]));
+  check(!el.shadowRoot.querySelector("img, [onmouseover], [data-x]"), "a hostile colour in the configuration injects no element or attribute"); check([...q(el, ".fill")].every((f) => /^width:[\d.]+%;--col:var\(--sf-cyan\)$/.test(f.getAttribute("style"))), "hostile colours fall back to the default colour");
   el = mount("sf-bar-card", { entities: [] }, hass([])); check(text(el).includes("No entities"), "empty config message");
   el = mount("sf-bar-card", { entity: "sensor.t", min: 0, max: 0 }, h); check(q(el, ".fill")[0].style.width === "0%", "min == max does not break");
   el = mount("sf-bar-card", { entity: "sensor.t" }, hass([state("sensor.t", 50)])); check(!el.shadowRoot.querySelector(".head"), "no header when there is no title");
